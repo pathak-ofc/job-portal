@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectDb from "@/lib/db";
 import Job from "@/models/Job";
+import { auth } from "@/auth";
 
 // GET /api/jobs/[id]
 export async function GET(
@@ -33,18 +34,31 @@ export async function PATCH(
   try {
     await connectDb();
     const { id } = await params;
-    const body = await req.json();
 
-    const job = await Job.findByIdAndUpdate(id, body, {
-      new: true,
-      runValidators: true,
-    });
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
 
+    const job = await Job.findById(id);
     if (!job) {
       return NextResponse.json({ message: "Job not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ job });
+    if (job.companyId.toString() !== (session.user as any).id) {
+      return NextResponse.json(
+        { message: "Forbidden — not your job" },
+        { status: 403 }
+      );
+    }
+
+    const body = await req.json();
+    const updatedJob = await Job.findByIdAndUpdate(id, body, {
+      new: true,
+      runValidators: true,
+    });
+
+    return NextResponse.json({ job: updatedJob });
   } catch (error) {
     return NextResponse.json(
       { message: "Failed to update job", error: (error as Error).message },
@@ -62,11 +76,24 @@ export async function DELETE(
     await connectDb();
     const { id } = await params;
 
-    const job = await Job.findByIdAndDelete(id);
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
+
+    const job = await Job.findById(id);
     if (!job) {
       return NextResponse.json({ message: "Job not found" }, { status: 404 });
     }
 
+    if (job.companyId.toString() !== (session.user as any).id) {
+      return NextResponse.json(
+        { message: "Forbidden — not your job" },
+        { status: 403 }
+      );
+    }
+
+    await Job.findByIdAndDelete(id);
     return NextResponse.json({ message: "Job deleted successfully" });
   } catch (error) {
     return NextResponse.json(
