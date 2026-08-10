@@ -2,11 +2,33 @@ import { NextRequest, NextResponse } from "next/server";
 import connectDb from "@/lib/db";
 import Job from "@/models/Job";
 
-// GET /api/jobs — list all jobs
-export async function GET() {
+// GET /api/jobs — public job listing, with search/filter
+export async function GET(req: NextRequest) {
   try {
     await connectDb();
-    const jobs = await Job.find().sort({ createdAt: -1 });
+
+    const { searchParams } = new URL(req.url);
+    const search = searchParams.get("search");
+    const category = searchParams.get("category");
+    const location = searchParams.get("location");
+    const jobType = searchParams.get("jobType");
+
+    const query: any = { status: "approved" };
+
+    if (search) {
+      query.title = { $regex: search, $options: "i" };
+    }
+    if (category) {
+      query.category = category;
+    }
+    if (location) {
+      query.location = location;
+    }
+    if (jobType) {
+      query.jobType = jobType;
+    }
+
+    const jobs = await Job.find(query).sort({ createdAt: -1 });
     return NextResponse.json({ jobs });
   } catch (error) {
     return NextResponse.json(
@@ -16,7 +38,7 @@ export async function GET() {
   }
 }
 
-// POST /api/jobs — create a job
+// POST /api/jobs — create a job (your existing code, unchanged)
 export async function POST(req: NextRequest) {
   try {
     await connectDb();
