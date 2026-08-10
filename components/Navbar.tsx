@@ -16,11 +16,7 @@ export default function Navbar() {
   // AuthLayout already provides its own header — don't double up
   if (pathname === "/login" || pathname === "/register") return null;
 
-  const role = (session?.user as any)?.role as
-    | "student"
-    | "company"
-    | "admin"
-    | undefined;
+  const role = session?.user?.role;
 
   const dashboardHref =
     role === "student"

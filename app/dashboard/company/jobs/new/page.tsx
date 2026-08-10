@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
+import { toast } from "sonner";
+import { JOB_CATEGORIES } from "@/lib/jobCategories";
 
 export default function NewJobPage() {
   const router = useRouter();
@@ -16,14 +18,34 @@ export default function NewJobPage() {
   const [deadline, setDeadline] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
+
+  const [minDeadline] = useState(() =>
+    new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
 
     if (!title || !description || !category || !location || !jobType || !deadline) {
-      setError("Please fill in all required fields.");
+      toast.error("Please fill in all required fields.");
+      return;
+    }
+
+    if (title.trim().length < 3) {
+      toast.error("Job title must be at least 3 characters.");
+      return;
+    }
+
+    if (description.trim().length < 20) {
+      toast.error("Description must be at least 20 characters.");
+      return;
+    }
+
+    const deadlineDate = new Date(deadline);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (Number.isNaN(deadlineDate.getTime()) || deadlineDate <= today) {
+      toast.error("Deadline must be a future date.");
       return;
     }
 
@@ -44,13 +66,14 @@ export default function NewJobPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.message || "Failed to post job");
+        toast.error(data.message || "Failed to post job");
         setSubmitting(false);
         return;
       }
+      toast.success("Job posted — it's now pending admin review.");
       router.push("/dashboard/company/jobs");
     } catch {
-      setError("Something went wrong — please try again");
+      toast.error("Something went wrong — please try again");
       setSubmitting(false);
     }
   };
@@ -97,13 +120,18 @@ export default function NewJobPage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-sm font-medium text-text">Category</label>
-            <input
-              type="text"
+            <select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              placeholder="Engineering"
               className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm text-text outline-none focus:border-primary"
-            />
+            >
+              <option value="">Select a category</option>
+              {JOB_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>
@@ -150,13 +178,12 @@ export default function NewJobPage() {
             <input
               type="date"
               value={deadline}
+              min={minDeadline}
               onChange={(e) => setDeadline(e.target.value)}
               className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm text-text outline-none focus:border-primary"
             />
           </div>
         </div>
-
-        {error && <p className="text-sm text-primary-2">{error}</p>}
 
         <motion.button
           whileTap={{ scale: 0.98 }}

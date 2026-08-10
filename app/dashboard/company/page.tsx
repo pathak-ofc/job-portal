@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Upload, Check, ExternalLink, BadgeCheck } from "lucide-react";
+import { Upload, ExternalLink, BadgeCheck } from "lucide-react";
+import { toast } from "sonner";
 
 type CompanyProfile = {
   companyName: string;
@@ -22,8 +23,6 @@ export default function CompanyProfilePage() {
 
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     fetch("/api/profile/company")
@@ -36,12 +35,11 @@ export default function CompanyProfilePage() {
         setDescription(p.description || "");
         setVerified(!!p.verified);
       })
-      .catch(() => setError("Failed to load company profile"))
+      .catch(() => toast.error("Failed to load company profile"))
       .finally(() => setLoading(false));
   }, []);
 
   const handleLogoUpload = async (file: File) => {
-    setError("");
     setUploading(true);
     try {
       const formData = new FormData();
@@ -49,12 +47,13 @@ export default function CompanyProfilePage() {
       const res = await fetch("/api/upload", { method: "POST", body: formData });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.message || "Logo upload failed");
+        toast.error(data.message || "Logo upload failed");
         return;
       }
       setLogoUrl(data.url);
+      toast.success("Logo uploaded");
     } catch {
-      setError("Something went wrong uploading your logo");
+      toast.error("Something went wrong uploading your logo");
     } finally {
       setUploading(false);
     }
@@ -62,11 +61,9 @@ export default function CompanyProfilePage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
-    setSaved(false);
 
     if (!companyName.trim()) {
-      setError("Company name is required");
+      toast.error("Company name is required");
       return;
     }
 
@@ -79,13 +76,12 @@ export default function CompanyProfilePage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.message || "Failed to save profile");
+        toast.error(data.message || "Failed to save profile");
         return;
       }
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
+      toast.success("Profile saved");
     } catch {
-      setError("Something went wrong saving your profile");
+      toast.error("Something went wrong saving your profile");
     } finally {
       setSaving(false);
     }
@@ -181,23 +177,13 @@ export default function CompanyProfilePage() {
           )}
         </div>
 
-        {error && <p className="text-sm text-primary-2">{error}</p>}
-
         <motion.button
           whileTap={{ scale: 0.98 }}
           type="submit"
           disabled={saving || uploading}
           className="flex items-center gap-2 rounded-xl bg-linear-to-r from-primary to-primary-2 px-6 py-2.5 text-sm font-medium text-white disabled:opacity-60"
         >
-          {saved ? (
-            <>
-              <Check size={16} /> Saved
-            </>
-          ) : saving ? (
-            "Saving..."
-          ) : (
-            "Save changes"
-          )}
+          {saving ? "Saving..." : "Save changes"}
         </motion.button>
       </form>
     </motion.div>

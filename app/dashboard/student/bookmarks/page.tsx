@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import JobCard from "@/components/JobCard";
+import { toast } from "sonner";
 
 type Bookmark = {
   _id: string;
@@ -20,7 +21,6 @@ type Bookmark = {
 export default function StudentBookmarksPage() {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
   useEffect(() => {
     fetch("/api/bookmarks")
@@ -29,7 +29,7 @@ export default function StudentBookmarksPage() {
         return res.json();
       })
       .then((data) => setBookmarks(data.bookmarks || []))
-      .catch(() => setError("Failed to load your bookmarks"))
+      .catch(() => toast.error("Failed to load your bookmarks"))
       .finally(() => setLoading(false));
   }, []);
 
@@ -49,8 +49,6 @@ export default function StudentBookmarksPage() {
               <div key={i} className="h-40 animate-pulse rounded-2xl border border-border bg-surface" />
             ))}
           </div>
-        ) : error ? (
-          <p className="text-sm text-primary-2">{error}</p>
         ) : validBookmarks.length === 0 ? (
           <motion.div
             initial={{ opacity: 0 }}
@@ -65,7 +63,7 @@ export default function StudentBookmarksPage() {
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {validBookmarks.map((b, i) => (
-              <JobCard key={b._id} job={b.jobId as any} index={i} />
+              <JobCard key={b._id} job={b.jobId as NonNullable<Bookmark["jobId"]>} index={i} />
             ))}
           </div>
         )}

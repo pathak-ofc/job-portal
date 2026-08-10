@@ -1,4 +1,5 @@
-import type { NextAuthConfig } from "next-auth";
+import type { NextAuthConfig, User } from "next-auth";
+import type { Role } from "./types/next-auth";
 
 export const authConfig: NextAuthConfig = {
   session: {
@@ -7,15 +8,16 @@ export const authConfig: NextAuthConfig = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.id = user.id;
-        token.role = (user as any).role;
+        const typedUser = user as User & { role: Role };
+        token.id = typedUser.id;
+        token.role = typedUser.role;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        (session.user as any).id = token.id;
-        (session.user as any).role = token.role;
+        session.user.id = token.id;
+        session.user.role = token.role;
       }
       return session;
     },

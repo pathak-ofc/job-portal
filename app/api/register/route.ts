@@ -4,9 +4,19 @@ import User from "@/models/User";
 import StudentProfile from "@/models/StudentProfile";
 import CompanyProfile from "@/models/CompanyProfile";
 import bcrypt from "bcryptjs";
+import { rateLimit, getClientIp } from "@/lib/rateLimit";
 
 export async function POST(req: NextRequest) {
     try {
+        const ip = getClientIp(req);
+        const { allowed } = rateLimit(`register:${ip}`, { limit: 5, windowMs: 15 * 60 * 1000 });
+        if (!allowed) {
+            return NextResponse.json(
+                { message: "Too many registration attempts. Please try again later." },
+                { status: 429 }
+            );
+        }
+
         await connectDb();
         const body = await req.json();
         const { name, email, password, role } = body;
@@ -19,8 +29,17 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        const trimmedName = String(name).trim();
+        if (trimmedName.length < 2 || trimmedName.length > 100) {
+            return NextResponse.json(
+                { message: "Name must be between 2 and 100 characters" },
+                { status: 400 }
+            );
+        }
+
+        const normalizedEmail = String(email).trim().toLowerCase();
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
+        if (!emailRegex.test(normalizedEmail)) {
             return NextResponse.json(
                 { message: "Invalid email format" },
                 { status: 400 }
@@ -34,15 +53,15 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        if (password.length < 6) {
+        if (typeof password !== "string" || password.length < 6 || password.length > 200) {
             return NextResponse.json(
-                { message: "Password must be at least 6 characters" },
+                { message: "Password must be between 6 and 200 characters" },
                 { status: 400 }
             );
         }
 
         // check for existing user
-        const existingUser = await User.findOne({ email });
+        const existingUser = await User.findOne({ email: normalizedEmail });
         if (existingUser) {
             return NextResponse.json(
                 { message: "Email is already registered" },
@@ -51,12 +70,12 @@ export async function POST(req: NextRequest) {
         }
 
         // hash password
-        const hashedPassword = await bcrypt.hash(password, 10);
+        const hashedPassword = await bcrypt.hash(password, 12);
 
         // create user
         const user = await User.create({
-            name,
-            email,
+            name: trimmedName,
+            email: normalizedEmail,
             password: hashedPassword,
             role,
         });
@@ -67,20 +86,29 @@ export async function POST(req: NextRequest) {
         } else if (role === "company") {
             await CompanyProfile.create({
                 userId: user._id,
-                companyName: name, // placeholder, they can edit later
+                companyName: trimmedName, // placeholder, they can edit later
             });
         }
 
         // never send the password back, even hashed
-        const { password: _, ...userWithoutPassword } = user.toObject();
+        const userObject = user.toObject();
+        delete userObject.password;
 
         return NextResponse.json(
-            { message: "User registered successfully", user: userWithoutPassword },
+            { message: "User registered successfully", user: userObject },
             { status: 201 }
         );
-    } catch (error) {
+    } catch (error: unknown) {
+        // duplicate key race (two concurrent registrations with the same email)
+        if ((error as { code?: number }).code === 11000) {
+            return NextResponse.json(
+                { message: "Email is already registered" },
+                { status: 409 }
+            );
+        }
+        console.error(error);
         return NextResponse.json(
-            { message: "Registration failed", error: (error as Error).message },
+            { message: "Registration failed" },
             { status: 500 }
         );
     }

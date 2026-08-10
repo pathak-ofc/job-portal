@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { toast } from "sonner";
 
 type UserRow = {
   _id: string;
@@ -8,6 +10,13 @@ type UserRow = {
   email: string;
   role: "student" | "company" | "admin";
   createdAt: string;
+};
+
+type Pagination = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
 };
 
 const roleStyles: Record<string, string> = {
@@ -18,22 +27,30 @@ const roleStyles: Record<string, string> = {
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<UserRow[]>([]);
+  const [pagination, setPagination] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
-    fetch("/api/admin/users")
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: show a loading skeleton immediately when filters/page change
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (roleFilter) params.set("role", roleFilter);
+    params.set("page", String(page));
+
+    fetch(`/api/admin/users?${params.toString()}`)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load users");
         return res.json();
       })
-      .then((data) => setUsers(data.users || []))
-      .catch(() => setError("Failed to load users"))
+      .then((data) => {
+        setUsers(data.users || []);
+        setPagination(data.pagination || null);
+      })
+      .catch(() => toast.error("Failed to load users"))
       .finally(() => setLoading(false));
-  }, []);
-
-  const filtered = roleFilter ? users.filter((u) => u.role === roleFilter) : users;
+  }, [roleFilter, page]);
 
   return (
     <div>
@@ -43,13 +60,16 @@ export default function AdminUsersPage() {
             Users
           </h1>
           <p className="mt-1 text-text-muted">
-            {loading ? "Loading..." : `${filtered.length} user${filtered.length !== 1 ? "s" : ""}`}
+            {loading ? "Loading..." : `${pagination?.total ?? users.length} user${(pagination?.total ?? users.length) !== 1 ? "s" : ""}`}
           </p>
         </div>
 
         <select
           value={roleFilter}
-          onChange={(e) => setRoleFilter(e.target.value)}
+          onChange={(e) => {
+            setRoleFilter(e.target.value);
+            setPage(1);
+          }}
           className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none focus:border-primary"
         >
           <option value="">All roles</option>
@@ -62,9 +82,7 @@ export default function AdminUsersPage() {
       <div className="mt-6 overflow-x-auto rounded-2xl border border-border bg-surface">
         {loading ? (
           <div className="h-64 animate-pulse" />
-        ) : error ? (
-          <p className="p-6 text-sm text-primary-2">{error}</p>
-        ) : filtered.length === 0 ? (
+        ) : users.length === 0 ? (
           <p className="p-12 text-center text-text">No users found.</p>
         ) : (
           <table className="w-full text-left text-sm">
@@ -77,7 +95,7 @@ export default function AdminUsersPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((u) => (
+              {users.map((u) => (
                 <tr key={u._id} className="border-b border-border last:border-0">
                   <td className="px-5 py-3 text-text">{u.name}</td>
                   <td className="px-5 py-3 text-text-muted">{u.email}</td>
@@ -103,6 +121,30 @@ export default function AdminUsersPage() {
           </table>
         )}
       </div>
+
+      {!loading && pagination && pagination.totalPages > 1 && (
+        <div className="mt-6 flex items-center justify-center gap-2">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-sm font-medium text-text-muted hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ChevronLeft size={15} />
+            Prev
+          </button>
+          <span className="px-2 text-sm text-text-muted">
+            Page {pagination.page} of {pagination.totalPages}
+          </span>
+          <button
+            onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
+            disabled={page >= pagination.totalPages}
+            className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-sm font-medium text-text-muted hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Next
+            <ChevronRight size={15} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

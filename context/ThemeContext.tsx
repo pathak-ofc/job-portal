@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 
 type ThemeContextType = {
   theme: "light" | "dark";
@@ -9,31 +9,35 @@ type ThemeContextType = {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+function getInitialTheme(): "light" | "dark" {
+  if (typeof window === "undefined") return "light";
+  const saved = localStorage.getItem("theme") as "light" | "dark" | null;
+  return (
+    saved ||
+    (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+  );
+}
+
 export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
-  const [theme, setTheme] = useState<"light" | "dark">("light");
-  const [mounted, setMounted] = useState(false);
+  // Lazy initializer runs once on the client during the first render — this
+  // reads localStorage/matchMedia without needing a setState-in-effect.
+  const [theme, setTheme] = useState<"light" | "dark">(getInitialTheme);
+  const mountedRef = useRef(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem("theme") as "light" | "dark" | null;
-    const initial =
-      saved ||
-      (window.matchMedia("(prefers-color-scheme: dark)").matches
-        ? "dark"
-        : "light");
-    setTheme(initial);
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (!mounted) return;
     const root = document.documentElement;
     if (theme === "dark") {
       root.classList.add("dark");
     } else {
       root.classList.remove("dark");
     }
-    localStorage.setItem("theme", theme);
-  }, [theme, mounted]);
+    // skip persisting on the very first mount so we don't rewrite the value
+    // we just read, only when the user actually toggles it
+    if (mountedRef.current) {
+      localStorage.setItem("theme", theme);
+    }
+    mountedRef.current = true;
+  }, [theme]);
 
   const toggleTheme = () => {
     setTheme((prev) => (prev === "dark" ? "light" : "dark"));

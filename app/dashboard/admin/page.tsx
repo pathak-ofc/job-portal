@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Briefcase, Users, Clock, Check, X } from "lucide-react";
+import { Briefcase, Users, Clock, Check, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { toast } from "sonner";
 
 type PendingJob = {
   _id: string;
@@ -14,36 +15,46 @@ type PendingJob = {
   companyId: { _id: string; name: string; email: string } | string;
 };
 
+type Pagination = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
 export default function AdminOverviewPage() {
   const [pendingJobs, setPendingJobs] = useState<PendingJob[]>([]);
+  const [pagination, setPagination] = useState<Pagination | null>(null);
+  const [page, setPage] = useState(1);
   const [totalUsers, setTotalUsers] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [actingId, setActingId] = useState<string | null>(null);
 
-  const loadData = () => {
-    setLoading(true);
+  const loadData = (targetPage: number) => {
     Promise.all([
-      fetch("/api/admin/jobs").then((res) => {
+      fetch(`/api/admin/jobs?page=${targetPage}`).then((res) => {
         if (!res.ok) throw new Error("Failed to load pending jobs");
         return res.json();
       }),
-      fetch("/api/admin/users").then((res) => {
+      fetch("/api/admin/users?pageSize=1").then((res) => {
         if (!res.ok) throw new Error("Failed to load users");
         return res.json();
       }),
     ])
       .then(([jobsData, usersData]) => {
         setPendingJobs(jobsData.jobs || []);
-        setTotalUsers((usersData.users || []).length);
+        setPagination(jobsData.pagination || null);
+        setTotalUsers(usersData.pagination?.total ?? (usersData.users || []).length);
       })
-      .catch(() => setError("Failed to load dashboard data"))
+      .catch(() => toast.error("Failed to load dashboard data"))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
-    loadData();
-  }, []);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: show a loading skeleton immediately when the page changes
+    setLoading(true);
+    loadData(page);
+  }, [page]);
 
   const handleAction = async (jobId: string, status: "approved" | "rejected") => {
     setActingId(jobId);
@@ -55,12 +66,13 @@ export default function AdminOverviewPage() {
       });
       if (res.ok) {
         setPendingJobs((prev) => prev.filter((j) => j._id !== jobId));
+        toast.success(status === "approved" ? "Job approved" : "Job rejected");
       } else {
         const data = await res.json();
-        setError(data.message || "Failed to update job status");
+        toast.error(data.message || "Failed to update job status");
       }
     } catch {
-      setError("Something went wrong updating the job");
+      toast.error("Something went wrong updating the job");
     } finally {
       setActingId(null);
     }
@@ -68,7 +80,7 @@ export default function AdminOverviewPage() {
 
   const stats = [
     { label: "Total Users", value: totalUsers, icon: Users },
-    { label: "Pending Jobs", value: pendingJobs.length, icon: Clock },
+    { label: "Pending Jobs", value: pagination?.total ?? pendingJobs.length, icon: Clock },
   ];
 
   return (
@@ -111,8 +123,6 @@ export default function AdminOverviewPage() {
           [...Array(3)].map((_, i) => (
             <div key={i} className="h-24 animate-pulse rounded-2xl border border-border bg-surface" />
           ))
-        ) : error ? (
-          <p className="text-sm text-primary-2">{error}</p>
         ) : pendingJobs.length === 0 ? (
           <div className="rounded-2xl border border-border bg-surface p-12 text-center">
             <p className="text-text">No pending jobs — you&apos;re all caught up.</p>
@@ -170,6 +180,30 @@ export default function AdminOverviewPage() {
           })
         )}
       </div>
+
+      {!loading && pagination && pagination.totalPages > 1 && (
+        <div className="mt-6 flex items-center justify-center gap-2">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-sm font-medium text-text-muted hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ChevronLeft size={15} />
+            Prev
+          </button>
+          <span className="px-2 text-sm text-text-muted">
+            Page {pagination.page} of {pagination.totalPages}
+          </span>
+          <button
+            onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
+            disabled={page >= pagination.totalPages}
+            className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-sm font-medium text-text-muted hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Next
+            <ChevronRight size={15} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

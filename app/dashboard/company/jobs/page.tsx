@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { Users, Trash2, Pencil, X, Check } from "lucide-react";
+import { toast } from "sonner";
 
 type Job = {
   _id: string;
@@ -26,19 +27,17 @@ const statusStyles: Record<string, string> = {
 export default function CompanyJobsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
   const loadJobs = () => {
-    setLoading(true);
-    fetch("/api/jobs?mine=true")
+    fetch("/api/jobs?mine=true&pageSize=50")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load jobs");
         return res.json();
       })
       .then((data) => setJobs(data.jobs || []))
-      .catch(() => setError("Failed to load your job posts"))
+      .catch(() => toast.error("Failed to load your job posts"))
       .finally(() => setLoading(false));
   };
 
@@ -52,12 +51,13 @@ export default function CompanyJobsPage() {
       const res = await fetch(`/api/jobs/${id}`, { method: "DELETE" });
       if (res.ok) {
         setJobs((prev) => prev.filter((j) => j._id !== id));
+        toast.success("Job deleted");
       } else {
         const data = await res.json();
-        setError(data.message || "Failed to delete job");
+        toast.error(data.message || "Failed to delete job");
       }
     } catch {
-      setError("Something went wrong deleting the job");
+      toast.error("Something went wrong deleting the job");
     } finally {
       setDeletingId(null);
       setConfirmId(null);
@@ -86,8 +86,6 @@ export default function CompanyJobsPage() {
           [...Array(3)].map((_, i) => (
             <div key={i} className="h-24 animate-pulse rounded-2xl border border-border bg-surface" />
           ))
-        ) : error ? (
-          <p className="text-sm text-primary-2">{error}</p>
         ) : jobs.length === 0 ? (
           <div className="rounded-2xl border border-border bg-surface p-12 text-center">
             <p className="text-text">You haven&apos;t posted any jobs yet.</p>

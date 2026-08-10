@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { toast } from "sonner";
 import AuthLayout from "@/components/AuthLayout";
 
 function LoginForm() {
@@ -13,12 +14,10 @@ function LoginForm() {
   const callbackUrl = searchParams.get("callbackUrl") || "/";
 
   const [form, setForm] = useState({ email: "", password: "" });
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
     setLoading(true);
 
     const result = await signIn("credentials", {
@@ -28,11 +27,12 @@ function LoginForm() {
     });
 
     if (result?.error) {
-      setError("Invalid email or password");
+      toast.error("Invalid email or password");
       setLoading(false);
       return;
     }
 
+    toast.success("Welcome back!");
     router.push(callbackUrl);
     router.refresh();
   };
@@ -63,16 +63,6 @@ function LoginForm() {
             placeholder="••••••••"
           />
         </div>
-
-        {error && (
-          <motion.p
-            initial={{ opacity: 0, x: -4 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="text-sm text-primary-2"
-          >
-            {error}
-          </motion.p>
-        )}
 
         <motion.button
           whileTap={{ scale: 0.98 }}

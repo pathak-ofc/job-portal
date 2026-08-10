@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Upload, FileText, Check } from "lucide-react";
+import { Upload, FileText } from "lucide-react";
+import { toast } from "sonner";
 
 type StudentProfile = {
   phone: string;
@@ -12,7 +13,6 @@ type StudentProfile = {
 };
 
 export default function StudentProfilePage() {
-  const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [phone, setPhone] = useState("");
@@ -22,26 +22,22 @@ export default function StudentProfilePage() {
 
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     fetch("/api/profile/student")
       .then((res) => res.json())
       .then((data) => {
         const p = data.profile as StudentProfile;
-        setProfile(p);
         setPhone(p.phone || "");
         setBio(p.bio || "");
         setSkillsInput((p.skills || []).join(", "));
         setResumeUrl(p.resumeUrl || "");
       })
-      .catch(() => setError("Failed to load profile"))
+      .catch(() => toast.error("Failed to load profile"))
       .finally(() => setLoading(false));
   }, []);
 
   const handleResumeUpload = async (file: File) => {
-    setError("");
     setUploading(true);
     try {
       const formData = new FormData();
@@ -49,12 +45,13 @@ export default function StudentProfilePage() {
       const res = await fetch("/api/upload", { method: "POST", body: formData });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.message || "Resume upload failed");
+        toast.error(data.message || "Resume upload failed");
         return;
       }
       setResumeUrl(data.url);
+      toast.success("Resume uploaded");
     } catch {
-      setError("Something went wrong uploading your resume");
+      toast.error("Something went wrong uploading your resume");
     } finally {
       setUploading(false);
     }
@@ -62,8 +59,6 @@ export default function StudentProfilePage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
-    setSaved(false);
     setSaving(true);
     try {
       const skills = skillsInput
@@ -78,13 +73,12 @@ export default function StudentProfilePage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.message || "Failed to save profile");
+        toast.error(data.message || "Failed to save profile");
         return;
       }
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
+      toast.success("Profile saved");
     } catch {
-      setError("Something went wrong saving your profile");
+      toast.error("Something went wrong saving your profile");
     } finally {
       setSaving(false);
     }
@@ -177,23 +171,13 @@ export default function StudentProfilePage() {
           )}
         </div>
 
-        {error && <p className="text-sm text-primary-2">{error}</p>}
-
         <motion.button
           whileTap={{ scale: 0.98 }}
           type="submit"
           disabled={saving || uploading}
           className="flex items-center gap-2 rounded-xl bg-linear-to-r from-primary to-primary-2 px-6 py-2.5 text-sm font-medium text-white disabled:opacity-60"
         >
-          {saved ? (
-            <>
-              <Check size={16} /> Saved
-            </>
-          ) : saving ? (
-            "Saving..."
-          ) : (
-            "Save changes"
-          )}
+          {saving ? "Saving..." : "Save changes"}
         </motion.button>
       </form>
     </motion.div>

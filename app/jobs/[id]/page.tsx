@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MapPin, Briefcase, Clock, Bookmark, X, Upload } from "lucide-react";
+import { MapPin, Briefcase, Clock, Bookmark, X, Upload, Building2 } from "lucide-react";
+import Link from "next/link";
+import { toast } from "sonner";
 
 type Job = {
   _id: string;
@@ -34,7 +36,6 @@ export default function JobDetailPage() {
   const [file, setFile] = useState<File | null>(null);
   const [coverLetter, setCoverLetter] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [applyError, setApplyError] = useState("");
 
   useEffect(() => {
     fetch(`/api/jobs/${id}`)
@@ -47,34 +48,57 @@ export default function JobDetailPage() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  // check bookmark status once logged in
+  // check bookmark + applied status once logged in as a student — this is
+  // what makes "Applied" persist across a page reload instead of resetting
+  // to local-only state.
   useEffect(() => {
-    if (status !== "authenticated" || (session?.user as any)?.role !== "student") return;
+    if (status !== "authenticated" || session?.user?.role !== "student") return;
+
     fetch("/api/bookmarks")
       .then((res) => res.json())
       .then((data) => {
         const isBookmarked = (data.bookmarks || []).some(
-          (b: any) => b.jobId?._id === id
+          (b: { jobId?: { _id?: string } }) => b.jobId?._id === id
         );
         setBookmarked(isBookmarked);
       })
       .catch(() => {});
+
+    fetch(`/api/applications?jobId=${id}`)
+      .then((res) => res.json())
+      .then((data) => {
+        setApplied((data.applications || []).length > 0);
+      })
+      .catch(() => {});
   }, [status, session, id]);
 
-  const role = (session?.user as any)?.role;
+  // "checking" state is purely derived from session status — no separate
+  // setState needed, so it can't cause an extra render pass on its own.
+  const checkingApplied = status === "loading";
+
+  const role = session?.user?.role;
 
   const handleBookmarkToggle = async () => {
     if (status !== "authenticated") {
       router.push(`/login?callbackUrl=/jobs/${id}`);
       return;
     }
-    const res = await fetch("/api/bookmarks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jobId: id }),
-    });
-    const data = await res.json();
-    if (res.ok) setBookmarked(data.bookmarked);
+    try {
+      const res = await fetch("/api/bookmarks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: id }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setBookmarked(data.bookmarked);
+        toast.success(data.bookmarked ? "Job bookmarked" : "Bookmark removed");
+      } else {
+        toast.error(data.message || "Failed to update bookmark");
+      }
+    } catch {
+      toast.error("Something went wrong — please try again");
+    }
   };
 
   const openApplyModal = () => {
@@ -82,16 +106,14 @@ export default function JobDetailPage() {
       router.push(`/login?callbackUrl=/jobs/${id}`);
       return;
     }
-    setApplyError("");
     setModalOpen(true);
   };
 
   const handleApply = async (e: React.FormEvent) => {
     e.preventDefault();
-    setApplyError("");
 
     if (!file) {
-      setApplyError("Please upload your resume (PDF).");
+      toast.error("Please upload your resume (PDF).");
       return;
     }
 
@@ -108,7 +130,7 @@ export default function JobDetailPage() {
       const uploadData = await uploadRes.json();
 
       if (!uploadRes.ok) {
-        setApplyError(uploadData.message || "Resume upload failed");
+        toast.error(uploadData.message || "Resume upload failed");
         setSubmitting(false);
         return;
       }
@@ -126,15 +148,16 @@ export default function JobDetailPage() {
       const appData = await appRes.json();
 
       if (!appRes.ok) {
-        setApplyError(appData.message || "Failed to submit application");
+        toast.error(appData.message || "Failed to submit application");
         setSubmitting(false);
         return;
       }
 
       setApplied(true);
       setModalOpen(false);
+      toast.success("Application submitted!");
     } catch {
-      setApplyError("Something went wrong — please try again");
+      toast.error("Something went wrong — please try again");
     } finally {
       setSubmitting(false);
     }
@@ -161,6 +184,8 @@ export default function JobDetailPage() {
     );
   }
 
+  const company = typeof job.companyId === "string" ? null : job.companyId;
+
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
       <motion.div
@@ -175,6 +200,15 @@ export default function JobDetailPage() {
               {job.title}
             </h1>
             <p className="mt-1 text-text-muted">{job.category}</p>
+            {company && (
+              <Link
+                href={`/companies/${company._id}`}
+                className="mt-2 flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+              >
+                <Building2 size={14} />
+                {company.name}
+              </Link>
+            )}
           </div>
 
           {role === "student" && (
@@ -217,9 +251,15 @@ export default function JobDetailPage() {
         <div className="mt-6 whitespace-pre-line text-text">{job.description}</div>
 
         <div className="mt-8 border-t border-border pt-6">
-          {applied ? (
+          {checkingApplied ? (
+            <div className="h-11 w-40 animate-pulse rounded-xl bg-bg" />
+          ) : applied ? (
             <p className="rounded-xl bg-primary/10 px-4 py-3 text-sm font-medium text-primary">
-              You&apos;ve applied to this job.
+              You&apos;ve applied to this job. Manage it from{" "}
+              <Link href="/dashboard/student/applications" className="underline">
+                My Applications
+              </Link>
+              .
             </p>
           ) : role === "company" || role === "admin" ? (
             <p className="text-sm text-text-muted">
@@ -296,10 +336,6 @@ export default function JobDetailPage() {
                     placeholder="Why are you a good fit for this role?"
                   />
                 </div>
-
-                {applyError && (
-                  <p className="text-sm text-primary-2">{applyError}</p>
-                )}
 
                 <motion.button
                   whileTap={{ scale: 0.98 }}

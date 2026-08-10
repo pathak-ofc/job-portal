@@ -4,18 +4,17 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { toast } from "sonner";
 import AuthLayout from "@/components/AuthLayout";
 
 export default function RegisterPage() {
   const router = useRouter();
   const [role, setRole] = useState<"student" | "company">("student");
   const [form, setForm] = useState({ name: "", email: "", password: "" });
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
     setLoading(true);
 
     try {
@@ -28,14 +27,15 @@ export default function RegisterPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.message || "Something went wrong");
+        toast.error(data.message || "Something went wrong");
         setLoading(false);
         return;
       }
 
+      toast.success("Account created — please log in.");
       router.push("/login");
     } catch {
-      setError("Network error — please try again");
+      toast.error("Network error — please try again");
       setLoading(false);
     }
   };
@@ -107,16 +107,6 @@ export default function RegisterPage() {
             placeholder="At least 6 characters"
           />
         </div>
-
-        {error && (
-          <motion.p
-            initial={{ opacity: 0, x: -4 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="text-sm text-primary-2"
-          >
-            {error}
-          </motion.p>
-        )}
 
         <motion.button
           whileTap={{ scale: 0.98 }}

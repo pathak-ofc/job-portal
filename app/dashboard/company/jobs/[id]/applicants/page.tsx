@@ -4,7 +4,14 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { FileText, ArrowLeft } from "lucide-react";
+import { FileText, ArrowLeft, Phone } from "lucide-react";
+import { toast } from "sonner";
+
+type StudentProfile = {
+  bio?: string;
+  skills?: string[];
+  phone?: string;
+};
 
 type Application = {
   _id: string;
@@ -14,6 +21,7 @@ type Application = {
   createdAt: string;
   jobId: { _id: string; title: string } | string;
   studentId: { _id: string; name: string; email: string } | null;
+  studentProfile?: StudentProfile | null;
 };
 
 const statusOptions = ["applied", "reviewed", "shortlisted", "rejected"];
@@ -31,26 +39,21 @@ export default function JobApplicantsPage() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [jobTitle, setJobTitle] = useState("");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/applications")
+    fetch(`/api/applications?jobId=${id}`)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load applicants");
         return res.json();
       })
       .then((data) => {
-        const all = (data.applications || []) as Application[];
-        const forThisJob = all.filter((a) => {
-          const jid = typeof a.jobId === "string" ? a.jobId : a.jobId?._id;
-          return jid === id;
-        });
+        const forThisJob = (data.applications || []) as Application[];
         setApplications(forThisJob);
         const first = forThisJob[0]?.jobId;
         if (first && typeof first !== "string") setJobTitle(first.title);
       })
-      .catch(() => setError("Failed to load applicants"))
+      .catch(() => toast.error("Failed to load applicants"))
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -67,11 +70,12 @@ export default function JobApplicantsPage() {
         setApplications((prev) =>
           prev.map((a) => (a._id === appId ? { ...a, status: data.application.status } : a))
         );
+        toast.success("Status updated");
       } else {
-        setError(data.message || "Failed to update status");
+        toast.error(data.message || "Failed to update status");
       }
     } catch {
-      setError("Something went wrong updating status");
+      toast.error("Something went wrong updating status");
     } finally {
       setUpdatingId(null);
     }
@@ -97,8 +101,6 @@ export default function JobApplicantsPage() {
           [...Array(3)].map((_, i) => (
             <div key={i} className="h-24 animate-pulse rounded-2xl border border-border bg-surface" />
           ))
-        ) : error ? (
-          <p className="text-sm text-primary-2">{error}</p>
         ) : applications.length === 0 ? (
           <div className="rounded-2xl border border-border bg-surface p-12 text-center">
             <p className="text-text">No applicants yet for this job.</p>
@@ -118,6 +120,12 @@ export default function JobApplicantsPage() {
                     {app.studentId?.name || "Unknown applicant"}
                   </h3>
                   <p className="mt-1 text-sm text-text-muted">{app.studentId?.email}</p>
+                  {app.studentProfile?.phone && (
+                    <p className="mt-1 flex items-center gap-1.5 text-sm text-text-muted">
+                      <Phone size={13} />
+                      {app.studentProfile.phone}
+                    </p>
+                  )}
                 </div>
                 <span
                   className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium capitalize ${
@@ -128,8 +136,29 @@ export default function JobApplicantsPage() {
                 </span>
               </div>
 
+              {app.studentProfile?.bio && (
+                <p className="mt-3 whitespace-pre-line text-sm text-text-muted">
+                  {app.studentProfile.bio}
+                </p>
+              )}
+
+              {app.studentProfile?.skills && app.studentProfile.skills.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {app.studentProfile.skills.map((skill) => (
+                    <span
+                      key={skill}
+                      className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary"
+                    >
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+              )}
+
               {app.coverLetter && (
-                <p className="mt-3 whitespace-pre-line text-sm text-text">{app.coverLetter}</p>
+                <p className="mt-3 whitespace-pre-line border-t border-border pt-3 text-sm text-text">
+                  {app.coverLetter}
+                </p>
               )}
 
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">

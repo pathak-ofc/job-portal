@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import mongoose from "mongoose";
 import connectDb from "@/lib/db";
 import Bookmark from "@/models/Bookmark";
+import Job from "@/models/Job";
 import { auth } from "@/auth";
 
 // POST /api/bookmarks — toggle bookmark on/off
@@ -13,7 +15,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    if ((session.user as any).role !== "student") {
+    if (session.user.role !== "student") {
       return NextResponse.json(
         { message: "Only students can bookmark jobs" },
         { status: 403 }
@@ -23,11 +25,16 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { jobId } = body;
 
-    if (!jobId) {
-      return NextResponse.json({ message: "jobId is required" }, { status: 400 });
+    if (!jobId || !mongoose.isValidObjectId(jobId)) {
+      return NextResponse.json({ message: "Valid jobId is required" }, { status: 400 });
     }
 
-    const studentId = (session.user as any).id;
+    const jobExists = await Job.exists({ _id: jobId });
+    if (!jobExists) {
+      return NextResponse.json({ message: "Job not found" }, { status: 404 });
+    }
+
+    const studentId = session.user.id;
 
     const existing = await Bookmark.findOne({ studentId, jobId });
 
@@ -41,8 +48,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ bookmarked: true });
     }
   } catch (error) {
+    console.error(error);
     return NextResponse.json(
-      { message: "Failed to toggle bookmark", error: (error as Error).message },
+      { message: "Failed to toggle bookmark" },
       { status: 500 }
     );
   }
@@ -58,14 +66,22 @@ export async function GET() {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const studentId = (session.user as any).id;
+    if (session.user.role !== "student") {
+      return NextResponse.json(
+        { message: "Only students can view bookmarks" },
+        { status: 403 }
+      );
+    }
+
+    const studentId = session.user.id;
 
     const bookmarks = await Bookmark.find({ studentId }).populate("jobId");
 
     return NextResponse.json({ bookmarks });
   } catch (error) {
+    console.error(error);
     return NextResponse.json(
-      { message: "Failed to fetch bookmarks", error: (error as Error).message },
+      { message: "Failed to fetch bookmarks" },
       { status: 500 }
     );
   }

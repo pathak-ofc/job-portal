@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
-import { MapPin, FileText } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { MapPin, FileText, X, Check } from "lucide-react";
+import { toast } from "sonner";
 
 type Application = {
   _id: string;
@@ -29,7 +30,8 @@ const statusStyles: Record<string, string> = {
 export default function StudentApplicationsPage() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/applications")
@@ -38,9 +40,28 @@ export default function StudentApplicationsPage() {
         return res.json();
       })
       .then((data) => setApplications(data.applications || []))
-      .catch(() => setError("Failed to load your applications"))
+      .catch(() => toast.error("Failed to load your applications"))
       .finally(() => setLoading(false));
   }, []);
+
+  const handleWithdraw = async (id: string) => {
+    setWithdrawingId(id);
+    try {
+      const res = await fetch(`/api/applications/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        setApplications((prev) => prev.filter((a) => a._id !== id));
+        toast.success("Application withdrawn");
+      } else {
+        const data = await res.json();
+        toast.error(data.message || "Failed to withdraw application");
+      }
+    } catch {
+      toast.error("Something went wrong withdrawing your application");
+    } finally {
+      setWithdrawingId(null);
+      setConfirmId(null);
+    }
+  };
 
   return (
     <div>
@@ -56,8 +77,6 @@ export default function StudentApplicationsPage() {
           [...Array(3)].map((_, i) => (
             <div key={i} className="h-24 animate-pulse rounded-2xl border border-border bg-surface" />
           ))
-        ) : error ? (
-          <p className="text-sm text-primary-2">{error}</p>
         ) : applications.length === 0 ? (
           <div className="rounded-2xl border border-border bg-surface p-12 text-center">
             <p className="text-text">You haven&apos;t applied to any jobs yet.</p>
@@ -109,29 +128,60 @@ export default function StudentApplicationsPage() {
                 </span>
               </div>
 
-              <div className="mt-3 flex items-center justify-between text-sm text-text-muted">
-                <span>
-                  Applied{" "}
-                  {new Date(app.createdAt).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  })}
-                </span>
-                <a
-                  href={app.resumeUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 font-medium text-primary hover:underline"
-                >
-                  <FileText size={14} />
-                  Resume
-                </a>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3 text-sm text-text-muted">
+                <div className="flex items-center gap-4">
+                  <span>
+                    Applied{" "}
+                    {new Date(app.createdAt).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
+                  </span>
+                  <a
+                    href={app.resumeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 font-medium text-primary hover:underline"
+                  >
+                    <FileText size={14} />
+                    Resume
+                  </a>
+                </div>
+
+                {confirmId === app._id ? (
+                  <div className="flex items-center gap-2">
+                    <span>Withdraw this application?</span>
+                    <button
+                      onClick={() => handleWithdraw(app._id)}
+                      disabled={withdrawingId === app._id}
+                      className="flex items-center gap-1 rounded-lg bg-primary-2 px-2.5 py-1 text-xs font-medium text-white disabled:opacity-60"
+                    >
+                      <Check size={12} />
+                      {withdrawingId === app._id ? "Withdrawing..." : "Confirm"}
+                    </button>
+                    <button
+                      onClick={() => setConfirmId(null)}
+                      className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-text-muted"
+                    >
+                      <X size={12} />
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setConfirmId(app._id)}
+                    className="font-medium text-text-muted hover:text-primary-2"
+                  >
+                    Withdraw
+                  </button>
+                )}
               </div>
             </motion.div>
           ))
         )}
       </div>
+      <AnimatePresence />
     </div>
   );
 }

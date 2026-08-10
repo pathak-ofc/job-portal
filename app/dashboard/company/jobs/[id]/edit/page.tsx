@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
+import { toast } from "sonner";
+import { JOB_CATEGORIES } from "@/lib/jobCategories";
 
 export default function EditJobPage() {
   const { id } = useParams();
@@ -18,7 +20,6 @@ export default function EditJobPage() {
   const [deadline, setDeadline] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
@@ -41,12 +42,33 @@ export default function EditJobPage() {
       .finally(() => setLoading(false));
   }, [id]);
 
+  const [minDeadline] = useState(() =>
+    new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  );
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
 
     if (!title || !description || !category || !location || !jobType || !deadline) {
-      setError("Please fill in all required fields.");
+      toast.error("Please fill in all required fields.");
+      return;
+    }
+
+    if (title.trim().length < 3) {
+      toast.error("Job title must be at least 3 characters.");
+      return;
+    }
+
+    if (description.trim().length < 20) {
+      toast.error("Description must be at least 20 characters.");
+      return;
+    }
+
+    const deadlineDate = new Date(deadline);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (Number.isNaN(deadlineDate.getTime()) || deadlineDate <= today) {
+      toast.error("Deadline must be a future date.");
       return;
     }
 
@@ -67,13 +89,14 @@ export default function EditJobPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.message || "Failed to update job");
+        toast.error(data.message || "Failed to update job");
         setSubmitting(false);
         return;
       }
+      toast.success("Job updated — it's back in the admin review queue.");
       router.push("/dashboard/company/jobs");
     } catch {
-      setError("Something went wrong — please try again");
+      toast.error("Something went wrong — please try again");
       setSubmitting(false);
     }
   };
@@ -89,7 +112,6 @@ export default function EditJobPage() {
       </div>
     );
   }
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -99,7 +121,9 @@ export default function EditJobPage() {
       <h1 className="font-[family-name:var(--font-heading)] text-2xl font-bold text-text">
         Edit Job
       </h1>
-      <p className="mt-1 text-text-muted">Update your job listing details.</p>
+      <p className="mt-1 text-text-muted">
+        Update your job listing details. Saving changes sends this job back to admin review.
+      </p>
 
       <form
         onSubmit={handleSubmit}
@@ -128,12 +152,18 @@ export default function EditJobPage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-sm font-medium text-text">Category</label>
-            <input
-              type="text"
+            <select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
               className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm text-text outline-none focus:border-primary"
-            />
+            >
+              <option value="">Select a category</option>
+              {JOB_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>
@@ -178,13 +208,12 @@ export default function EditJobPage() {
             <input
               type="date"
               value={deadline}
+              min={minDeadline}
               onChange={(e) => setDeadline(e.target.value)}
               className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm text-text outline-none focus:border-primary"
             />
           </div>
         </div>
-
-        {error && <p className="text-sm text-primary-2">{error}</p>}
 
         <div className="flex items-center gap-3">
           <motion.button

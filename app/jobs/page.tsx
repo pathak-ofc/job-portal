@@ -3,8 +3,9 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Search, SlidersHorizontal } from "lucide-react";
+import { Search, SlidersHorizontal, ChevronLeft, ChevronRight } from "lucide-react";
 import JobCard from "@/components/JobCard";
+import { JOB_CATEGORIES } from "@/lib/jobCategories";
 
 type Job = {
   _id: string;
@@ -16,6 +17,13 @@ type Job = {
   deadline: string;
 };
 
+type Pagination = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
 function JobsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -24,8 +32,10 @@ function JobsContent() {
   const [category, setCategory] = useState(searchParams.get("category") || "");
   const [location, setLocation] = useState(searchParams.get("location") || "");
   const [jobType, setJobType] = useState(searchParams.get("jobType") || "");
+  const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
 
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [pagination, setPagination] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchJobs = () => {
@@ -35,28 +45,43 @@ function JobsContent() {
     if (category) params.set("category", category);
     if (location) params.set("location", location);
     if (jobType) params.set("jobType", jobType);
+    params.set("page", String(page));
 
     fetch(`/api/jobs?${params.toString()}`)
       .then((res) => res.json())
-      .then((data) => setJobs(data.jobs || []))
-      .catch(() => setJobs([]))
+      .then((data) => {
+        setJobs(data.jobs || []);
+        setPagination(data.pagination || null);
+      })
+      .catch(() => {
+        setJobs([]);
+        setPagination(null);
+      })
       .finally(() => setLoading(false));
   };
 
-  // initial load, and whenever the URL's own params change (e.g. coming from homepage)
+  // initial load, and whenever the URL's own params change (e.g. coming from homepage,
+  // changing a filter, or navigating to a different page)
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: show a loading skeleton immediately when search params change
     fetchJobs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  const handleFilter = (e: React.FormEvent) => {
-    e.preventDefault();
+  const buildParams = (overridePage?: number) => {
     const params = new URLSearchParams();
     if (search) params.set("search", search);
     if (category) params.set("category", category);
     if (location) params.set("location", location);
     if (jobType) params.set("jobType", jobType);
-    router.push(`/jobs?${params.toString()}`);
+    if (overridePage && overridePage > 1) params.set("page", String(overridePage));
+    return params;
+  };
+
+  const handleFilter = (e: React.FormEvent) => {
+    e.preventDefault();
+    // changing filters always resets back to page 1
+    router.push(`/jobs?${buildParams().toString()}`);
   };
 
   const clearFilters = () => {
@@ -67,6 +92,10 @@ function JobsContent() {
     router.push("/jobs");
   };
 
+  const goToPage = (targetPage: number) => {
+    router.push(`/jobs?${buildParams(targetPage).toString()}`);
+  };
+
   const hasActiveFilters = search || category || location || jobType;
 
   return (
@@ -75,7 +104,9 @@ function JobsContent() {
         Browse Jobs
       </h1>
       <p className="mt-1 text-text-muted">
-        {loading ? "Searching..." : `${jobs.length} job${jobs.length !== 1 ? "s" : ""} found`}
+        {loading
+          ? "Searching..."
+          : `${pagination?.total ?? jobs.length} job${(pagination?.total ?? jobs.length) !== 1 ? "s" : ""} found`}
       </p>
 
       {/* Filter bar */}
@@ -113,13 +144,18 @@ function JobsContent() {
           className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none placeholder:text-text-muted lg:w-40"
         />
 
-        <input
-          type="text"
+        <select
           value={category}
           onChange={(e) => setCategory(e.target.value)}
-          placeholder="Category"
-          className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none placeholder:text-text-muted lg:w-40"
-        />
+          className="rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none lg:w-48"
+        >
+          <option value="">All categories</option>
+          {JOB_CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
 
         <button
           type="submit"
@@ -163,11 +199,37 @@ function JobsContent() {
             </p>
           </motion.div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {jobs.map((job, i) => (
-              <JobCard key={job._id} job={job} index={i} />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {jobs.map((job, i) => (
+                <JobCard key={job._id} job={job} index={i} />
+              ))}
+            </div>
+
+            {pagination && pagination.totalPages > 1 && (
+              <div className="mt-8 flex items-center justify-center gap-2">
+                <button
+                  onClick={() => goToPage(page - 1)}
+                  disabled={page <= 1}
+                  className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-sm font-medium text-text-muted hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <ChevronLeft size={15} />
+                  Prev
+                </button>
+                <span className="px-2 text-sm text-text-muted">
+                  Page {pagination.page} of {pagination.totalPages}
+                </span>
+                <button
+                  onClick={() => goToPage(page + 1)}
+                  disabled={page >= pagination.totalPages}
+                  className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-sm font-medium text-text-muted hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Next
+                  <ChevronRight size={15} />
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </main>
