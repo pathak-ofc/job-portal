@@ -11,6 +11,12 @@ export interface IJob extends Document {
   jobType: "full-time" | "part-time" | "internship";
   deadline: Date;
   status: "pending" | "approved" | "rejected" | "closed";
+  // new fields for job-seeker / poster insights
+  viewCount: number;
+  isRemote: boolean;
+  experienceLevel?: "entry" | "mid" | "senior";
+  salaryMin?: number;
+  salaryMax?: number;
 }
 
 const JobSchema = new Schema<IJob>(
@@ -29,21 +35,24 @@ const JobSchema = new Schema<IJob>(
     deadline: {
       type: Date,
       required: true,
-      validate: {
-        validator: function (value: Date) {
-          // Deadline must be strictly in the future relative to now.
-          // On update, mongoose only re-checks this if `deadline` is modified
-          // (see runValidators + isModified checks in the API routes).
-          return value.getTime() > Date.now();
-        },
-        message: "Deadline must be a future date",
-      },
+      // Future-date validation is enforced in API routes (jobCreateSchema / jobUpdate)
+      // rather than at the schema level to avoid breaking seed data, admin re-edits,
+      // and closed/rejected jobs whose deadlines naturally pass.
     },
     status: {
       type: String,
       enum: ["pending", "approved", "rejected", "closed"],
       default: "pending",
     },
+    viewCount: { type: Number, default: 0, min: 0 },
+    isRemote: { type: Boolean, default: false },
+    experienceLevel: {
+      type: String,
+      enum: ["entry", "mid", "senior"],
+      required: false,
+    },
+    salaryMin: { type: Number, min: 0, required: false },
+    salaryMax: { type: Number, min: 0, required: false },
   },
   { timestamps: true }
 );
@@ -52,5 +61,12 @@ const JobSchema = new Schema<IJob>(
 JobSchema.index({ status: 1, createdAt: -1 });
 JobSchema.index({ companyId: 1, createdAt: -1 });
 JobSchema.index({ title: "text", description: "text" });
+JobSchema.index({ location: 1 });
+JobSchema.index({ category: 1 });
+JobSchema.index({ jobType: 1 });
+JobSchema.index({ deadline: 1 });
+JobSchema.index({ isRemote: 1 });
+JobSchema.index({ viewCount: -1 });
+JobSchema.index({ salaryMin: 1, salaryMax: 1 });
 
 export default mongoose.models.Job || mongoose.model<IJob>("Job", JobSchema);

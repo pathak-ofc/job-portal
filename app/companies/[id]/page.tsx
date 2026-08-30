@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { motion } from "framer-motion";
-import { Globe, BadgeCheck, Building2, Briefcase } from "lucide-react";
+import { Globe, BadgeCheck, Building2, Briefcase, MapPin, Users, Calendar } from "lucide-react";
 import JobCard from "@/components/JobCard";
 
 type Company = {
@@ -12,6 +12,10 @@ type Company = {
   website: string;
   description: string;
   verified: boolean;
+  industry?: string;
+  size?: string;
+  location?: string;
+  foundedYear?: number;
 };
 
 type Job = {
@@ -114,9 +118,30 @@ export default function CompanyPublicProfilePage() {
           </div>
         </div>
 
-        {company.description && (
-          <p className="mt-6 whitespace-pre-line text-text">{company.description}</p>
-        )}
+        {company.description && <p className="mt-6 whitespace-pre-line leading-relaxed text-text">{company.description}</p>}
+
+        <div className="mt-6 flex flex-wrap gap-2">
+          {company.industry && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-bg border border-border px-3 py-1.5 text-xs font-medium text-text-muted">
+              <Briefcase size={12} className="text-primary" /> {company.industry}
+            </span>
+          )}
+          {company.size && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-bg border border-border px-3 py-1.5 text-xs font-medium text-text-muted">
+              <Users size={12} className="text-primary" /> {company.size} employees
+            </span>
+          )}
+          {company.location && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-bg border border-border px-3 py-1.5 text-xs font-medium text-text-muted">
+              <MapPin size={12} className="text-primary" /> {company.location}
+            </span>
+          )}
+          {company.foundedYear && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-bg border border-border px-3 py-1.5 text-xs font-medium text-text-muted">
+              <Calendar size={12} className="text-primary" /> Founded {company.foundedYear}
+            </span>
+          )}
+        </div>
       </motion.div>
 
       <div className="mt-10">

@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import connectDb from "@/lib/db";
 import Job from "@/models/Job";
 import { auth } from "@/auth";
-
-const DEFAULT_PAGE_SIZE = 10;
-const MAX_PAGE_SIZE = 50;
+import { PAGINATION } from "@/lib/constants";
 
 export async function GET(req: NextRequest) {
   try {
@@ -22,8 +20,8 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
     const pageSize = Math.min(
-      MAX_PAGE_SIZE,
-      Math.max(1, parseInt(searchParams.get("pageSize") || String(DEFAULT_PAGE_SIZE), 10) || DEFAULT_PAGE_SIZE)
+      PAGINATION.ADMIN_JOBS_MAX,
+      Math.max(1, parseInt(searchParams.get("pageSize") || String(PAGINATION.ADMIN_JOBS_DEFAULT), 10) || PAGINATION.ADMIN_JOBS_DEFAULT)
     );
 
     const total = await Job.countDocuments({ status: "pending" });
@@ -31,7 +29,8 @@ export async function GET(req: NextRequest) {
       .populate("companyId", "name email")
       .sort({ createdAt: -1 })
       .skip((page - 1) * pageSize)
-      .limit(pageSize);
+      .limit(pageSize)
+      .lean();
 
     return NextResponse.json({
       jobs,

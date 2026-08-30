@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import connectDb from "@/lib/db";
 import CompanyProfile from "@/models/CompanyProfile";
 import { auth } from "@/auth";
+import { companyProfilePatchSchema, formatZodError } from "@/lib/validation";
+import { isValidCloudinaryUrl } from "@/lib/cloudinary";
 
 // GET /api/profile/company — get the logged-in company's profile
 export async function GET() {
@@ -59,13 +61,18 @@ export async function PATCH(req: NextRequest) {
     }
 
     const userId = session.user.id;
-    const body = await req.json();
+    const raw = await req.json();
+    const parsed = companyProfilePatchSchema.safeParse(raw);
+    if (!parsed.success) {
+      return NextResponse.json({ message: formatZodError(parsed.error) }, { status: 400 });
+    }
+    const { companyName, logoUrl, website, description } = parsed.data;
 
-    // only allow these fields — never let the client set userId or verified
-    const { companyName, logoUrl, website, description } = body;
-
-    if (companyName !== undefined && (!companyName || !companyName.trim())) {
-      return NextResponse.json({ message: "Company name cannot be empty" }, { status: 400 });
+    if (logoUrl && logoUrl.length > 0 && !isValidCloudinaryUrl(logoUrl)) {
+      return NextResponse.json(
+        { message: "logoUrl must be a valid Cloudinary URL from this project" },
+        { status: 400 }
+      );
     }
 
     const update: Record<string, unknown> = {};

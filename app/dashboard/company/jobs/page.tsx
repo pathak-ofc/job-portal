@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Users, Trash2, Pencil, X, Check } from "lucide-react";
+import { Users, Trash2, Pencil, X, Check, Eye, Calendar, Briefcase, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 
 type Job = {
@@ -15,6 +15,10 @@ type Job = {
   jobType: string;
   deadline: string;
   status: "pending" | "approved" | "rejected" | "closed";
+  viewCount?: number;
+  applicantCount?: number;
+  isRemote?: boolean;
+  experienceLevel?: string;
 };
 
 const statusStyles: Record<string, string> = {
@@ -64,6 +68,13 @@ export default function CompanyJobsPage() {
     }
   };
 
+  const totals = {
+    jobs: jobs.length,
+    views: jobs.reduce((s, j) => s + (j.viewCount || 0), 0),
+    applicants: jobs.reduce((s, j) => s + (j.applicantCount || 0), 0),
+    pending: jobs.filter((j) => j.status === "pending").length,
+  };
+
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -71,15 +82,35 @@ export default function CompanyJobsPage() {
           <h1 className="font-[family-name:var(--font-heading)] text-2xl font-bold text-text">
             My Job Posts
           </h1>
-          <p className="mt-1 text-text-muted">Manage the jobs you&apos;ve posted.</p>
+          <p className="mt-1 text-text-muted">Track performance and manage the jobs you&apos;ve posted.</p>
         </div>
-        <Link
-          href="/dashboard/company/jobs/new"
-          className="rounded-xl bg-linear-to-r from-primary to-primary-2 px-5 py-2 text-sm font-medium text-white"
-        >
+        <Link href="/dashboard/company/jobs/new" className="rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-primary-hover">
           Post a job
         </Link>
       </div>
+
+      {/* Analytics */}
+      {!loading && jobs.length > 0 && (
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            { label: "Total jobs", value: totals.jobs, icon: Briefcase },
+            { label: "Total views", value: totals.views, icon: Eye },
+            { label: "Applicants", value: totals.applicants, icon: Users },
+            { label: "Pending review", value: totals.pending, icon: TrendingUp },
+          ].map((c) => {
+            const Icon = c.icon;
+            return (
+              <div key={c.label} className="rounded-2xl border border-border bg-surface p-4">
+                <div className="flex items-center gap-2 text-text-muted">
+                  <Icon size={14} className="text-primary" />
+                  <span className="text-xs">{c.label}</span>
+                </div>
+                <p className="mt-1 text-2xl font-bold text-text">{c.value}</p>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <div className="mt-6 space-y-3">
         {loading ? (
@@ -106,30 +137,27 @@ export default function CompanyJobsPage() {
               className="rounded-2xl border border-border bg-surface p-5"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 className="font-[family-name:var(--font-heading)] text-lg font-semibold text-text">
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-[family-name:var(--font-heading)] text-lg font-semibold text-text truncate">
                     {job.title}
                   </h3>
                   <p className="mt-1 text-sm text-text-muted">
-                    {job.category} · {job.location}
+                    {job.category} · {job.location} {job.isRemote && "• Remote"} {job.experienceLevel && `• ${job.experienceLevel}`}
                   </p>
+                  <div className="mt-2 flex flex-wrap gap-2 text-xs text-text-muted">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-bg border border-border px-2 py-1"><Eye size={12} /> {job.viewCount ?? 0} views</span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-primary font-medium"><Users size={12} /> {job.applicantCount ?? 0} applicants</span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-bg border border-border px-2 py-1 capitalize"><Briefcase size={12} /> {job.jobType}</span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-bg border border-border px-2 py-1"><Calendar size={12} /> {new Date(job.deadline).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                  </div>
                 </div>
-                <span
-                  className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium capitalize ${
-                    statusStyles[job.status] || statusStyles.pending
-                  }`}
-                >
-                  {job.status}
-                </span>
+                <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium capitalize ${statusStyles[job.status] || statusStyles.pending}`}>{job.status}</span>
               </div>
 
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
-                <Link
-                  href={`/dashboard/company/jobs/${job._id}/applicants`}
-                  className="flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
-                >
+                <Link href={`/dashboard/company/jobs/${job._id}/applicants`} className="flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary hover:text-white">
                   <Users size={15} />
-                  View applicants
+                  View applicants {job.applicantCount ? `(${job.applicantCount})` : ""}
                 </Link>
 
                 <div className="flex items-center gap-3">

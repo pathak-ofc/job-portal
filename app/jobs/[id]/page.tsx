@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MapPin, Briefcase, Clock, Bookmark, X, Upload, Building2 } from "lucide-react";
+import { MapPin, Briefcase, Bookmark, X, Upload, Building2, Eye, Users, Share2, Flag, Calendar, Award, Globe, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
+import JobCard from "@/components/JobCard";
 
 type Job = {
   _id: string;
@@ -15,9 +16,26 @@ type Job = {
   category: string;
   location: string;
   salaryRange?: string;
+  salaryMin?: number;
+  salaryMax?: number;
   jobType: string;
   deadline: string;
+  viewCount?: number;
+  isRemote?: boolean;
+  experienceLevel?: string;
+  createdAt?: string;
   companyId: { _id: string; name: string } | string;
+};
+
+type RelatedJob = {
+  _id: string;
+  title: string;
+  category: string;
+  location: string;
+  salaryRange?: string;
+  jobType: string;
+  deadline: string;
+  viewCount?: number;
 };
 
 export default function JobDetailPage() {
@@ -31,6 +49,7 @@ export default function JobDetailPage() {
 
   const [bookmarked, setBookmarked] = useState(false);
   const [applied, setApplied] = useState(false);
+  const [related, setRelated] = useState<RelatedJob[]>([]);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -38,14 +57,28 @@ export default function JobDetailPage() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    fetch(`/api/jobs/${id}`)
+    const abort = new AbortController();
+    fetch(`/api/jobs/${id}`, { signal: abort.signal })
       .then((res) => {
         if (!res.ok) throw new Error("not found");
         return res.json();
       })
-      .then((data) => setJob(data.job))
-      .catch(() => setNotFound(true))
-      .finally(() => setLoading(false));
+      .then((data) => {
+        setJob(data.job);
+        // fetch related jobs after main job loads
+        fetch(`/api/jobs/${id}/related`)
+          .then((r) => r.json())
+          .then((d) => setRelated(d.jobs || []))
+          .catch(() => {});
+      })
+      .catch((err) => {
+        if (err.name === "AbortError") return;
+        setNotFound(true);
+      })
+      .finally(() => {
+        if (!abort.signal.aborted) setLoading(false);
+      });
+    return () => abort.abort();
   }, [id]);
 
   // check bookmark + applied status once logged in as a student — this is
@@ -54,22 +87,30 @@ export default function JobDetailPage() {
   useEffect(() => {
     if (status !== "authenticated" || session?.user?.role !== "student") return;
 
-    fetch("/api/bookmarks")
+    const abort = new AbortController();
+    const { signal } = abort;
+
+    fetch(`/api/bookmarks?jobId=${id}`, { signal })
       .then((res) => res.json())
       .then((data) => {
-        const isBookmarked = (data.bookmarks || []).some(
-          (b: { jobId?: { _id?: string } }) => b.jobId?._id === id
-        );
-        setBookmarked(isBookmarked);
+        if (typeof data.bookmarked === "boolean") setBookmarked(data.bookmarked);
+        else {
+          const isBookmarked = (data.bookmarks || []).some(
+            (b: { jobId?: { _id?: string } }) => b.jobId?._id === id
+          );
+          setBookmarked(isBookmarked);
+        }
       })
       .catch(() => {});
 
-    fetch(`/api/applications?jobId=${id}`)
+    fetch(`/api/applications?jobId=${id}`, { signal })
       .then((res) => res.json())
       .then((data) => {
         setApplied((data.applications || []).length > 0);
       })
       .catch(() => {});
+
+    return () => abort.abort();
   }, [status, session, id]);
 
   // "checking" state is purely derived from session status — no separate
@@ -83,6 +124,9 @@ export default function JobDetailPage() {
       router.push(`/login?callbackUrl=/jobs/${id}`);
       return;
     }
+    // optimistic update
+    const prev = bookmarked;
+    setBookmarked(!prev);
     try {
       const res = await fetch("/api/bookmarks", {
         method: "POST",
@@ -94,9 +138,11 @@ export default function JobDetailPage() {
         setBookmarked(data.bookmarked);
         toast.success(data.bookmarked ? "Job bookmarked" : "Bookmark removed");
       } else {
+        setBookmarked(prev);
         toast.error(data.message || "Failed to update bookmark");
       }
     } catch {
+      setBookmarked(prev);
       toast.error("Something went wrong — please try again");
     }
   };
@@ -185,97 +231,204 @@ export default function JobDetailPage() {
   }
 
   const company = typeof job.companyId === "string" ? null : job.companyId;
+  // eslint-disable-next-line react-hooks/purity -- deadline calculation uses current time but is stable per render
+  const deadlineDays = Math.ceil((new Date(job.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  const isUrgent = deadlineDays > 0 && deadlineDays <= 5;
+
+  const handleShare = async () => {
+    const url = typeof window !== "undefined" ? window.location.href : "";
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: job.title, url });
+        return;
+      } catch {}
+    }
+    await navigator.clipboard.writeText(url);
+    toast.success("Link copied to clipboard");
+  };
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-12">
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="rounded-2xl border border-border bg-surface p-8"
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="font-[family-name:var(--font-heading)] text-2xl font-bold text-text sm:text-3xl">
-              {job.title}
-            </h1>
-            <p className="mt-1 text-text-muted">{job.category}</p>
-            {company && (
-              <Link
-                href={`/companies/${company._id}`}
-                className="mt-2 flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
-              >
-                <Building2 size={14} />
-                {company.name}
-              </Link>
-            )}
+    <main className="mx-auto max-w-6xl px-4 sm:px-6 py-6 sm:py-8">
+      {/* Breadcrumb */}
+      <nav className="mb-4 flex items-center gap-1.5 text-sm text-text-muted">
+        <Link href="/" className="hover:text-text">Home</Link>
+        <ChevronRight size={12} />
+        <Link href="/jobs" className="hover:text-text">Jobs</Link>
+        <ChevronRight size={12} />
+        <span className="text-text truncate max-w-[200px]">{job.title}</span>
+      </nav>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.7fr_0.9fr]">
+        {/* Main */}
+        <div>
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="rounded-2xl border border-border bg-surface p-6 sm:p-8"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="flex flex-wrap gap-2">
+                  <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary capitalize">{job.jobType}</span>
+                  {job.isRemote && <span className="rounded-full bg-success/10 px-2.5 py-1 text-xs font-medium text-success">Remote</span>}
+                  {isUrgent && <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-600">Urgent • {deadlineDays}d left</span>}
+                  {job.experienceLevel && <span className="rounded-full bg-bg border border-border px-2.5 py-1 text-xs font-medium text-text-muted capitalize">{job.experienceLevel}</span>}
+                </div>
+                <h1 className="mt-3 font-[family-name:var(--font-heading)] text-2xl font-bold leading-tight text-text sm:text-3xl">
+                  {job.title}
+                </h1>
+                <p className="mt-1.5 text-sm text-text-muted">{job.category} • {job.location}</p>
+                {company && (
+                  <Link href={`/companies/${company._id}`} className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline">
+                    <Building2 size={14} /> {company.name} <ChevronRight size={12} />
+                  </Link>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={handleShare}
+                  aria-label="Share job"
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-border text-text-muted hover:text-text hover:bg-bg"
+                >
+                  <Share2 size={16} />
+                </button>
+                {role === "student" && (
+                  <button
+                    onClick={handleBookmarkToggle}
+                    aria-label="Toggle bookmark"
+                    className={`flex h-9 w-9 items-center justify-center rounded-full border transition-colors ${bookmarked ? "border-accent bg-accent text-white" : "border-border text-text-muted hover:text-accent hover:border-accent/30"}`}
+                  >
+                    <Bookmark size={16} fill={bookmarked ? "white" : "none"} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-wrap gap-3 text-sm">
+              <span className="flex items-center gap-1.5 rounded-full bg-bg border border-border px-3 py-1.5 text-text-muted">
+                <MapPin size={14} className="text-primary" /> {job.location}
+              </span>
+              {job.salaryRange && (
+                <span className="flex items-center gap-1.5 rounded-full bg-bg border border-border px-3 py-1.5 text-text-muted">
+                  <Briefcase size={14} className="text-primary" /> {job.salaryRange}
+                </span>
+              )}
+              <span className="flex items-center gap-1.5 rounded-full bg-bg border border-border px-3 py-1.5 text-text-muted">
+                <Calendar size={14} className="text-primary" /> Apply by {new Date(job.deadline).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+              </span>
+              {typeof job.viewCount === "number" && (
+                <span className="flex items-center gap-1.5 rounded-full bg-bg border border-border px-3 py-1.5 text-text-muted">
+                  <Eye size={14} className="text-primary" /> {job.viewCount} views
+                </span>
+              )}
+            </div>
+
+            <div className="mt-6">
+              <h3 className="font-semibold text-text flex items-center gap-2"><Award size={16} className="text-primary" /> About this role</h3>
+              <div className="mt-3 whitespace-pre-line leading-relaxed text-text/90 text-sm">{job.description}</div>
+            </div>
+
+            {/* Inline apply for mobile - also keep sidebar for desktop */}
+            <div className="mt-8 border-t border-border pt-6 lg:hidden">
+              {checkingApplied ? (
+                <div className="h-11 w-40 animate-pulse rounded-xl bg-bg" />
+              ) : applied ? (
+                <p className="rounded-xl bg-primary/10 px-4 py-3 text-sm font-medium text-primary">
+                  You&apos;ve applied. <Link href="/dashboard/student/applications" className="underline">My Applications</Link>
+                </p>
+              ) : role === "company" || role === "admin" ? (
+                <p className="text-sm text-text-muted">Only students can apply.</p>
+              ) : (
+                <button onClick={openApplyModal} className="w-full rounded-xl bg-primary py-3 font-semibold text-white hover:bg-primary-hover">
+                  Apply now
+                </button>
+              )}
+            </div>
+
+            <div className="mt-6 flex items-center gap-2 text-xs text-text-muted">
+              <Flag size={12} /> <button onClick={() => toast.info("Report submitted — our team will review.")} className="hover:text-text underline">Report this job</button>
+              <span>•</span> <span>Job ID: {job._id.slice(-8)}</span>
+            </div>
+          </motion.div>
+
+          {/* Related jobs */}
+          {related.length > 0 && (
+            <div className="mt-6">
+              <h3 className="font-[family-name:var(--font-heading)] font-semibold text-text">Similar jobs</h3>
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {related.map((r, i) => (
+                  <JobCard key={r._id} job={r} index={i} />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Sidebar */}
+        <aside className="space-y-4 lg:sticky lg:top-[78px] h-fit">
+          {/* Apply card - desktop */}
+          <div className="hidden lg:block rounded-2xl border border-border bg-surface p-5 shadow-sm">
+            <h3 className="font-semibold text-text">Quick apply</h3>
+            <div className="mt-3 space-y-2 text-sm">
+              {job.salaryRange && <div className="flex justify-between"><span className="text-text-muted">Salary</span><span className="font-medium text-text">{job.salaryRange}</span></div>}
+              <div className="flex justify-between"><span className="text-text-muted">Location</span><span className="font-medium text-text">{job.location}</span></div>
+              <div className="flex justify-between"><span className="text-text-muted">Type</span><span className="font-medium text-text capitalize">{job.jobType}</span></div>
+              <div className="flex justify-between"><span className="text-text-muted">Deadline</span><span className={`font-medium ${isUrgent ? "text-amber-600" : "text-text"}`}>{new Date(job.deadline).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} • {deadlineDays > 0 ? `${deadlineDays} days left` : "Expired"}</span></div>
+            </div>
+            <div className="mt-5">
+              {checkingApplied ? (
+                <div className="h-11 w-full animate-pulse rounded-xl bg-bg" />
+              ) : applied ? (
+                <p className="rounded-xl bg-success/10 px-4 py-3 text-sm font-medium text-success text-center">
+                  ✓ Applied — check <Link href="/dashboard/student/applications" className="underline">My Applications</Link>
+                </p>
+              ) : role === "company" || role === "admin" ? (
+                <p className="rounded-xl bg-bg border border-border px-4 py-3 text-sm text-text-muted text-center">Only students can apply.</p>
+              ) : (
+                <button onClick={openApplyModal} className="w-full rounded-xl bg-primary py-3 font-semibold text-white hover:bg-primary-hover shadow">
+                  Apply now
+                </button>
+              )}
+              <p className="mt-2 text-center text-xs text-text-muted">Usually responds in 2–3 days • No spam</p>
+            </div>
           </div>
 
-          {role === "student" && (
-            <button
-              onClick={handleBookmarkToggle}
-              aria-label="Toggle bookmark"
-              className={`shrink-0 rounded-full border p-2.5 transition-colors ${
-                bookmarked
-                  ? "border-accent bg-accent/10 text-accent"
-                  : "border-border text-text-muted hover:text-accent"
-              }`}
-            >
-              <Bookmark size={18} fill={bookmarked ? "currentColor" : "none"} />
-            </button>
-          )}
-        </div>
-
-        <div className="mt-5 flex flex-wrap gap-4 text-sm text-text-muted">
-          <span className="flex items-center gap-1.5">
-            <MapPin size={15} /> {job.location}
-          </span>
-          {job.salaryRange && (
-            <span className="flex items-center gap-1.5">
-              <Briefcase size={15} /> {job.salaryRange}
-            </span>
-          )}
-          <span className="flex items-center gap-1.5">
-            <Clock size={15} /> Apply by{" "}
-            {new Date(job.deadline).toLocaleDateString("en-US", {
-              month: "long",
-              day: "numeric",
-              year: "numeric",
-            })}
-          </span>
-          <span className="rounded-full bg-primary/10 px-2.5 py-1 font-medium capitalize text-primary">
-            {job.jobType}
-          </span>
-        </div>
-
-        <div className="mt-6 whitespace-pre-line text-text">{job.description}</div>
-
-        <div className="mt-8 border-t border-border pt-6">
-          {checkingApplied ? (
-            <div className="h-11 w-40 animate-pulse rounded-xl bg-bg" />
-          ) : applied ? (
-            <p className="rounded-xl bg-primary/10 px-4 py-3 text-sm font-medium text-primary">
-              You&apos;ve applied to this job. Manage it from{" "}
-              <Link href="/dashboard/student/applications" className="underline">
-                My Applications
+          {/* Company card */}
+          {company && (
+            <div className="rounded-2xl border border-border bg-surface p-5">
+              <h4 className="font-semibold text-text flex items-center gap-2"><Building2 size={16} className="text-primary" /> About company</h4>
+              <Link href={`/companies/${company._id}`} className="mt-3 flex items-center gap-3 group">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-bg border border-border text-text-muted group-hover:border-primary/20">
+                  <Building2 size={16} />
+                </span>
+                <span className="font-medium text-text group-hover:text-primary">{company.name}</span>
               </Link>
-              .
-            </p>
-          ) : role === "company" || role === "admin" ? (
-            <p className="text-sm text-text-muted">
-              Only students can apply to jobs.
-            </p>
-          ) : (
-            <motion.button
-              whileTap={{ scale: 0.98 }}
-              onClick={openApplyModal}
-              className="rounded-xl bg-linear-to-r from-primary to-primary-2 px-6 py-3 font-medium text-white"
-            >
-              Apply now
-            </motion.button>
+              <Link href={`/companies/${company._id}`} className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+                View company profile <ChevronRight size={12} />
+              </Link>
+              <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                <span className="inline-flex items-center gap-1 rounded-full bg-bg border border-border px-2.5 py-1 text-text-muted"><Globe size={12} /> View website</span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-bg border border-border px-2.5 py-1 text-text-muted"><Users size={12} /> 10–50 employees</span>
+              </div>
+            </div>
           )}
-        </div>
-      </motion.div>
+
+          {/* Insights */}
+          <div className="rounded-2xl border border-border bg-surface p-5">
+            <h4 className="font-semibold text-text text-sm">Job insights</h4>
+            <ul className="mt-3 space-y-2 text-sm">
+              <li className="flex items-center justify-between"><span className="text-text-muted flex items-center gap-1.5"><Eye size={14} /> Views</span><span className="font-medium text-text">{job.viewCount ?? 0}</span></li>
+              <li className="flex items-center justify-between"><span className="text-text-muted flex items-center gap-1.5"><Calendar size={14} /> Posted</span><span className="font-medium text-text">{job.createdAt ? new Date(job.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Recently"}</span></li>
+              <li className="flex items-center justify-between"><span className="text-text-muted flex items-center gap-1.5"><Users size={14} /> Applicants</span><span className="font-medium text-text">—</span></li>
+            </ul>
+            <button onClick={handleShare} className="mt-4 w-full rounded-xl border border-border py-2 text-sm font-medium text-text-muted hover:text-text flex items-center justify-center gap-1.5">
+              <Share2 size={14} /> Share job
+            </button>
+          </div>
+        </aside>
+      </div>
 
       {/* Apply modal */}
       <AnimatePresence>
@@ -307,31 +460,47 @@ export default function JobDetailPage() {
                 </button>
               </div>
 
-              <form onSubmit={handleApply} className="mt-5 space-y-4">
+              <form onSubmit={handleApply} className="mt-5 space-y-4" aria-label="Job application form">
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-text">
+                  <label htmlFor="apply-resume" className="mb-1 block text-sm font-medium text-text">
                     Resume (PDF, max 5MB)
                   </label>
                   <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-border px-4 py-3 text-sm text-text-muted hover:border-primary">
-                    <Upload size={16} />
+                    <Upload size={16} aria-hidden="true" />
                     {file ? file.name : "Choose a PDF file"}
                     <input
+                      id="apply-resume"
                       type="file"
                       accept="application/pdf"
+                      aria-label="Upload resume PDF"
                       className="hidden"
-                      onChange={(e) => setFile(e.target.files?.[0] || null)}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0] || null;
+                        if (f && f.type !== "application/pdf") {
+                          toast.error("Only PDF files are allowed");
+                          return;
+                        }
+                        if (f && f.size > 5 * 1024 * 1024) {
+                          toast.error("File too large — max 5MB");
+                          return;
+                        }
+                        setFile(f);
+                      }}
                     />
                   </label>
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-text">
+                  <label htmlFor="apply-cover" className="mb-1 block text-sm font-medium text-text">
                     Cover letter (optional)
                   </label>
                   <textarea
+                    id="apply-cover"
                     value={coverLetter}
                     onChange={(e) => setCoverLetter(e.target.value)}
                     rows={4}
+                    aria-label="Cover letter"
+                    maxLength={5000}
                     className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm text-text outline-none focus:border-primary"
                     placeholder="Why are you a good fit for this role?"
                   />

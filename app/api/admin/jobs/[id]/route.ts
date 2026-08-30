@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import connectDb from "@/lib/db";
 import Job from "@/models/Job";
 import { auth } from "@/auth";
-
-const VALID_STATUSES = ["approved", "rejected", "closed"] as const;
+import { adminJobStatusSchema, formatZodError } from "@/lib/validation";
+import mongoose from "mongoose";
 
 export async function PATCH(
   req: NextRequest,
@@ -22,15 +22,16 @@ export async function PATCH(
       return NextResponse.json({ message: "Forbidden — admin only" }, { status: 403 });
     }
 
-    const body = await req.json();
-    const { status } = body;
-
-    if (!status || !VALID_STATUSES.includes(status)) {
-      return NextResponse.json(
-        { message: "Status must be approved, rejected, or closed" },
-        { status: 400 }
-      );
+    if (!mongoose.isValidObjectId(id)) {
+      return NextResponse.json({ message: "Invalid job id" }, { status: 400 });
     }
+
+    const raw = await req.json();
+    const parsed = adminJobStatusSchema.safeParse(raw);
+    if (!parsed.success) {
+      return NextResponse.json({ message: formatZodError(parsed.error) }, { status: 400 });
+    }
+    const { status } = parsed.data;
 
     const job = await Job.findById(id);
     if (!job) {

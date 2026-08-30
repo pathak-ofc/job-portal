@@ -1,28 +1,63 @@
 @import "tailwindcss";
 
-
-
 @theme {
-  --color-bg: #f7f8fa;
+  --color-bg: #f8fafc;
   --color-surface: #ffffff;
-  --color-border: #e5e7eb;
-  --color-text: #111827;
-  --color-text-muted: #6b7280;
-  --color-primary: #4338ca;
-  --color-primary-2: #fb7185;
-  --color-accent: #f5a623;
+  --color-surface-hover: #f1f5f9;
+  --color-border: #e2e8f0;
+  --color-text: #0f172a;
+  --color-text-muted: #64748b;
+  --color-primary: #4f46e5;
+  --color-primary-hover: #4338ca;
+  --color-primary-2: #ec4899;
+  --color-accent: #f59e0b;
+  --color-success: #10b981;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
 }
 
 .dark {
-  --color-bg: #0b0e14;
-  --color-surface: #131722;
-  --color-border: #232838;
-  --color-text: #e7e9ee;
-  --color-text-muted: #8b93a7;
+  --color-bg: #020617;
+  --color-surface: #0f172a;
+  --color-surface-hover: #1e293b;
+  --color-border: #1e293b;
+  --color-text: #f1f5f9;
+  --color-text-muted: #94a3b8;
 }
 
 body {
   background-color: var(--color-bg);
   color: var(--color-text);
   transition: background-color 0.3s ease, color 0.3s ease;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Subtle grid pattern for hero sections */
+.bg-grid {
+  background-image: radial-gradient(circle at 1px 1px, var(--color-border) 1px, transparent 0);
+  background-size: 24px 24px;
+}
+
+/* Focus ring utility for a11y */
+.focus-ring:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Scrollbar styling */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
 }

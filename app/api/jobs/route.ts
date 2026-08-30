@@ -2,14 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import connectDb from "@/lib/db";
 import Job from "@/models/Job";
 import { auth } from "@/auth";
-import type { Session } from "next-auth";
+import type { SessionUser } from "@/types/job";
 import { JOB_CATEGORIES } from "@/lib/jobCategories";
-
-type SessionUser = Session["user"] & { id: string; role: "student" | "company" | "admin" };
-
-const VALID_JOB_TYPES = ["full-time", "part-time", "internship"] as const;
-const DEFAULT_PAGE_SIZE = 12;
-const MAX_PAGE_SIZE = 50;
+import { VALID_JOB_TYPES, PAGINATION, SORT_OPTIONS, EXPERIENCE_LEVELS } from "@/lib/constants";
+import { jobCreateSchema, formatZodError } from "@/lib/validation";
+import Application from "@/models/Application";
+import { rateLimit, getClientIp } from "@/lib/rateLimit";
 
 // GET /api/jobs — public job listing, with search/filter/pagination
 // Pass ?mine=true while logged in as a company to get all of your own jobs
@@ -23,12 +21,15 @@ export async function GET(req: NextRequest) {
     const category = searchParams.get("category");
     const location = searchParams.get("location");
     const jobType = searchParams.get("jobType");
+    const isRemote = searchParams.get("isRemote");
+    const experienceLevel = searchParams.get("experienceLevel");
+    const sort = searchParams.get("sort") || "newest";
     const mine = searchParams.get("mine") === "true";
 
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
     const pageSize = Math.min(
-      MAX_PAGE_SIZE,
-      Math.max(1, parseInt(searchParams.get("pageSize") || String(DEFAULT_PAGE_SIZE), 10) || DEFAULT_PAGE_SIZE)
+      PAGINATION.JOBS_MAX,
+      Math.max(1, parseInt(searchParams.get("pageSize") || String(PAGINATION.JOBS_DEFAULT), 10) || PAGINATION.JOBS_DEFAULT)
     );
 
     let query: Record<string, unknown> = { status: "approved" };
@@ -60,7 +61,9 @@ export async function GET(req: NextRequest) {
       query.category = category;
     }
     if (location) {
-      query.location = location;
+      // case-insensitive partial match for location to improve UX and index use
+      const escapedLoc = location.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      query.location = { $regex: escapedLoc, $options: "i" };
     }
     if (jobType) {
       if (!VALID_JOB_TYPES.includes(jobType as typeof VALID_JOB_TYPES[number])) {
@@ -68,15 +71,52 @@ export async function GET(req: NextRequest) {
       }
       query.jobType = jobType;
     }
+    if (isRemote === "true") {
+      query.isRemote = true;
+    }
+    if (experienceLevel) {
+      if (!EXPERIENCE_LEVELS.includes(experienceLevel as typeof EXPERIENCE_LEVELS[number])) {
+        return NextResponse.json({ message: "Invalid experienceLevel" }, { status: 400 });
+      }
+      query.experienceLevel = experienceLevel;
+    }
+    if (!SORT_OPTIONS.includes(sort as typeof SORT_OPTIONS[number])) {
+      return NextResponse.json({ message: "Invalid sort option" }, { status: 400 });
+    }
+
+    // sorting
+    const sortMap: Record<string, Record<string, 1 | -1>> = {
+      newest: { createdAt: -1 },
+      deadline: { deadline: 1 },
+      salaryHigh: { salaryMax: -1, salaryMin: -1 },
+      popular: { viewCount: -1 },
+    };
+    const sortSpec = sortMap[sort] || sortMap.newest;
 
     const total = await Job.countDocuments(query);
     const jobs = await Job.find(query)
-      .sort({ createdAt: -1 })
+      .sort(sortSpec)
       .skip((page - 1) * pageSize)
-      .limit(pageSize);
+      .limit(pageSize)
+      .lean();
+
+    // For company dashboard (mine=true), attach applicant counts for analytics
+    let jobsWithMeta: unknown = jobs;
+    if (mine && jobs.length > 0) {
+      const jobIds = jobs.map((j: unknown) => (j as { _id: unknown })._id);
+      const counts = await Application.aggregate([
+        { $match: { jobId: { $in: jobIds } } },
+        { $group: { _id: "$jobId", count: { $sum: 1 } } },
+      ]);
+      const countMap = new Map(counts.map((c) => [String(c._id), c.count]));
+      jobsWithMeta = jobs.map((j: unknown) => ({
+        ...(j as Record<string, unknown>),
+        applicantCount: countMap.get(String((j as { _id: unknown })._id)) || 0,
+      }));
+    }
 
     return NextResponse.json({
-      jobs,
+      jobs: jobsWithMeta,
       pagination: {
         page,
         pageSize,
@@ -96,6 +136,13 @@ export async function GET(req: NextRequest) {
 // POST /api/jobs — create a job (company only, companyId derived from session)
 export async function POST(req: NextRequest) {
   try {
+    // Rate limit job creation: 10 jobs per 15 min per user + 20 per IP
+    const ip = getClientIp(req);
+    const ipLimit = await rateLimit(`create-job-ip:${ip}`, { limit: 20, windowMs: 15 * 60 * 1000 });
+    if (!ipLimit.allowed) {
+      return NextResponse.json({ message: "Too many job posts — please slow down" }, { status: 429 });
+    }
+
     await connectDb();
 
     const session = await auth();
@@ -111,34 +158,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const body = await req.json();
-    const { title, description, category, location, jobType, deadline, salaryRange } = body;
-
-    if (!title || !description || !category || !location || !jobType || !deadline) {
-      return NextResponse.json(
-        { message: "Missing required fields" },
-        { status: 400 }
-      );
+    const userLimit = await rateLimit(`create-job-user:${user.id}`, { limit: 10, windowMs: 15 * 60 * 1000 });
+    if (!userLimit.allowed) {
+      return NextResponse.json({ message: "Too many job posts — please try again later" }, { status: 429 });
     }
 
-    if (!VALID_JOB_TYPES.includes(jobType)) {
-      return NextResponse.json({ message: "Invalid job type" }, { status: 400 });
+    const raw = await req.json();
+    const parsed = jobCreateSchema.safeParse(raw);
+    if (!parsed.success) {
+      return NextResponse.json({ message: formatZodError(parsed.error) }, { status: 400 });
     }
+    const { title, description, category, location, jobType, deadline, salaryRange, salaryMin, salaryMax, experienceLevel, isRemote } = parsed.data;
 
-    if (!JOB_CATEGORIES.includes(category)) {
-      return NextResponse.json({ message: "Invalid category" }, { status: 400 });
+    if (salaryMin !== undefined && salaryMax !== undefined && salaryMin > salaryMax) {
+      return NextResponse.json({ message: "salaryMin must be <= salaryMax" }, { status: 400 });
     }
 
     const deadlineDate = new Date(deadline);
-    if (Number.isNaN(deadlineDate.getTime())) {
-      return NextResponse.json({ message: "Invalid deadline date" }, { status: 400 });
-    }
-    if (deadlineDate.getTime() <= Date.now()) {
-      return NextResponse.json(
-        { message: "Deadline must be a future date" },
-        { status: 400 }
-      );
-    }
 
     // companyId always comes from the session — never trust the client for this
     const job = await Job.create({
@@ -150,6 +186,10 @@ export async function POST(req: NextRequest) {
       jobType,
       deadline: deadlineDate,
       salaryRange: salaryRange || "",
+      salaryMin,
+      salaryMax,
+      experienceLevel,
+      isRemote: isRemote || location.toLowerCase().includes("remote"),
     });
 
     return NextResponse.json({ job }, { status: 201 });

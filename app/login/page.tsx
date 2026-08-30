@@ -8,10 +8,24 @@ import Link from "next/link";
 import { toast } from "sonner";
 import AuthLayout from "@/components/AuthLayout";
 
+function isSafeCallbackUrl(url: string | null): string {
+  if (!url) return "/";
+  // Only allow internal paths starting with "/" but not "//" or "/\" and no protocol
+  if (!url.startsWith("/") || url.startsWith("//") || url.includes("://") || url.startsWith("/\\")) return "/";
+  // Prevent open redirect via encoded slashes like %2F%2F
+  try {
+    const decoded = decodeURIComponent(url);
+    if (decoded.startsWith("//") || decoded.includes("://")) return "/";
+  } catch {
+    return "/";
+  }
+  return url;
+}
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") || "/";
+  const callbackUrl = isSafeCallbackUrl(searchParams.get("callbackUrl"));
 
   const [form, setForm] = useState({ email: "", password: "" });
   const [loading, setLoading] = useState(false);

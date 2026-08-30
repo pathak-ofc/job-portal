@@ -1,9 +1,9 @@
 import mongoose from "mongoose";
 
-const MONGODB_URL = process.env.MONGODB_URL!;
+const MONGODB_URL = (process.env.MONGODB_URL || process.env.MONGODB_URI || "") as string;
 
 if (!MONGODB_URL) {
-  throw new Error("Missing MONGODB_URL environment variable");
+  throw new Error("Missing MONGODB_URL (or MONGODB_URI) environment variable");
 }
 
 if (!process.env.AUTH_SECRET) {
@@ -12,6 +12,9 @@ if (!process.env.AUTH_SECRET) {
   throw new Error(
     "Missing AUTH_SECRET environment variable — required to sign session tokens securely"
   );
+}
+if (process.env.AUTH_SECRET && process.env.AUTH_SECRET.length < 32) {
+  throw new Error("AUTH_SECRET must be at least 32 characters long for security");
 }
 
 let cached = global.mongoose;

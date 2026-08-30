@@ -14,7 +14,11 @@ export default function NewJobPage() {
   const [category, setCategory] = useState("");
   const [location, setLocation] = useState("");
   const [salaryRange, setSalaryRange] = useState("");
+  const [salaryMin, setSalaryMin] = useState("");
+  const [salaryMax, setSalaryMax] = useState("");
   const [jobType, setJobType] = useState("full-time");
+  const [experienceLevel, setExperienceLevel] = useState("");
+  const [isRemote, setIsRemote] = useState(false);
   const [deadline, setDeadline] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
@@ -49,6 +53,11 @@ export default function NewJobPage() {
       return;
     }
 
+    if (salaryMin && salaryMax && Number(salaryMin) > Number(salaryMax)) {
+      toast.error("Salary min must be <= max");
+      return;
+    }
+
     setSubmitting(true);
     try {
       const res = await fetch("/api/jobs", {
@@ -58,9 +67,13 @@ export default function NewJobPage() {
           title,
           description,
           category,
-          location,
+          location: isRemote ? "Remote" : location,
           salaryRange,
+          salaryMin: salaryMin ? Number(salaryMin) : undefined,
+          salaryMax: salaryMax ? Number(salaryMax) : undefined,
           jobType,
+          experienceLevel: experienceLevel || undefined,
+          isRemote,
           deadline,
         }),
       });
@@ -140,9 +153,13 @@ export default function NewJobPage() {
               type="text"
               value={location}
               onChange={(e) => setLocation(e.target.value)}
-              placeholder="Kathmandu"
-              className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm text-text outline-none focus:border-primary"
+              placeholder={isRemote ? "Remote" : "Kathmandu"}
+              disabled={isRemote}
+              className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm text-text outline-none focus:border-primary disabled:bg-bg disabled:text-text-muted"
             />
+            <label className="mt-2 flex items-center gap-2 text-xs text-text-muted">
+              <input type="checkbox" checked={isRemote} onChange={(e) => setIsRemote(e.target.checked)} className="rounded border-border" /> This is a remote job
+            </label>
           </div>
 
           <div>
@@ -159,6 +176,20 @@ export default function NewJobPage() {
           </div>
 
           <div>
+            <label className="mb-1 block text-sm font-medium text-text">Experience level</label>
+            <select
+              value={experienceLevel}
+              onChange={(e) => setExperienceLevel(e.target.value)}
+              className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm text-text outline-none focus:border-primary"
+            >
+              <option value="">Any</option>
+              <option value="entry">Entry (0-2 years)</option>
+              <option value="mid">Mid (2-5 years)</option>
+              <option value="senior">Senior (5+ years)</option>
+            </select>
+          </div>
+
+          <div>
             <label className="mb-1 block text-sm font-medium text-text">
               Salary range <span className="text-text-muted">(optional)</span>
             </label>
@@ -169,6 +200,29 @@ export default function NewJobPage() {
               placeholder="NPR 40,000 - 60,000"
               className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm text-text outline-none focus:border-primary"
             />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-text-muted">Min salary (NPR)</label>
+              <input
+                type="number"
+                value={salaryMin}
+                onChange={(e) => setSalaryMin(e.target.value)}
+                placeholder="40000"
+                className="w-full rounded-xl border border-border bg-surface px-3 py-2.5 text-sm text-text outline-none focus:border-primary"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-text-muted">Max salary (NPR)</label>
+              <input
+                type="number"
+                value={salaryMax}
+                onChange={(e) => setSalaryMax(e.target.value)}
+                placeholder="60000"
+                className="w-full rounded-xl border border-border bg-surface px-3 py-2.5 text-sm text-text outline-none focus:border-primary"
+              />
+            </div>
           </div>
 
           <div>

@@ -34,14 +34,21 @@ export default function StudentApplicationsPage() {
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/applications")
+    const abort = new AbortController();
+    fetch("/api/applications?pageSize=50", { signal: abort.signal })
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load applications");
         return res.json();
       })
       .then((data) => setApplications(data.applications || []))
-      .catch(() => toast.error("Failed to load your applications"))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        if (err.name === "AbortError") return;
+        toast.error("Failed to load your applications");
+      })
+      .finally(() => {
+        if (!abort.signal.aborted) setLoading(false);
+      });
+    return () => abort.abort();
   }, []);
 
   const handleWithdraw = async (id: string) => {

@@ -16,7 +16,11 @@ export default function EditJobPage() {
   const [category, setCategory] = useState("");
   const [location, setLocation] = useState("");
   const [salaryRange, setSalaryRange] = useState("");
+  const [salaryMin, setSalaryMin] = useState("");
+  const [salaryMax, setSalaryMax] = useState("");
   const [jobType, setJobType] = useState("full-time");
+  const [experienceLevel, setExperienceLevel] = useState("");
+  const [isRemote, setIsRemote] = useState(false);
   const [deadline, setDeadline] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
@@ -35,7 +39,11 @@ export default function EditJobPage() {
         setCategory(job.category || "");
         setLocation(job.location || "");
         setSalaryRange(job.salaryRange || "");
+        setSalaryMin(job.salaryMin ? String(job.salaryMin) : "");
+        setSalaryMax(job.salaryMax ? String(job.salaryMax) : "");
         setJobType(job.jobType || "full-time");
+        setExperienceLevel(job.experienceLevel || "");
+        setIsRemote(!!job.isRemote);
         setDeadline(job.deadline ? job.deadline.slice(0, 10) : "");
       })
       .catch(() => setNotFound(true))
@@ -74,6 +82,10 @@ export default function EditJobPage() {
 
     setSubmitting(true);
     try {
+      if (salaryMin && salaryMax && Number(salaryMin) > Number(salaryMax)) {
+        toast.error("Salary min must be <= max");
+        return;
+      }
       const res = await fetch(`/api/jobs/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -81,9 +93,13 @@ export default function EditJobPage() {
           title,
           description,
           category,
-          location,
+          location: isRemote ? "Remote" : location,
           salaryRange,
+          salaryMin: salaryMin ? Number(salaryMin) : undefined,
+          salaryMax: salaryMax ? Number(salaryMax) : undefined,
           jobType,
+          experienceLevel: experienceLevel || undefined,
+          isRemote,
           deadline,
         }),
       });
@@ -171,9 +187,14 @@ export default function EditJobPage() {
             <input
               type="text"
               value={location}
+              disabled={isRemote}
               onChange={(e) => setLocation(e.target.value)}
-              className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm text-text outline-none focus:border-primary"
+              placeholder={isRemote ? "Remote" : "Kathmandu"}
+              className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm text-text outline-none focus:border-primary disabled:bg-bg"
             />
+            <label className="mt-2 flex items-center gap-2 text-xs text-text-muted">
+              <input type="checkbox" checked={isRemote} onChange={(e) => setIsRemote(e.target.checked)} className="rounded border-border" /> Remote job
+            </label>
           </div>
 
           <div>
@@ -190,6 +211,20 @@ export default function EditJobPage() {
           </div>
 
           <div>
+            <label className="mb-1 block text-sm font-medium text-text">Experience level</label>
+            <select
+              value={experienceLevel}
+              onChange={(e) => setExperienceLevel(e.target.value)}
+              className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm text-text outline-none focus:border-primary"
+            >
+              <option value="">Any</option>
+              <option value="entry">Entry</option>
+              <option value="mid">Mid</option>
+              <option value="senior">Senior</option>
+            </select>
+          </div>
+
+          <div>
             <label className="mb-1 block text-sm font-medium text-text">
               Salary range <span className="text-text-muted">(optional)</span>
             </label>
@@ -197,8 +232,20 @@ export default function EditJobPage() {
               type="text"
               value={salaryRange}
               onChange={(e) => setSalaryRange(e.target.value)}
+              placeholder="NPR 40,000 - 60,000"
               className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm text-text outline-none focus:border-primary"
             />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-text-muted">Min salary</label>
+              <input type="number" value={salaryMin} onChange={(e) => setSalaryMin(e.target.value)} placeholder="40000" className="w-full rounded-xl border border-border bg-surface px-3 py-2.5 text-sm text-text outline-none focus:border-primary" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-text-muted">Max salary</label>
+              <input type="number" value={salaryMax} onChange={(e) => setSalaryMax(e.target.value)} placeholder="60000" className="w-full rounded-xl border border-border bg-surface px-3 py-2.5 text-sm text-text outline-none focus:border-primary" />
+            </div>
           </div>
 
           <div>
