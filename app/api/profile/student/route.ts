@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import connectDb from "@/lib/db";
 import StudentProfile from "@/models/StudentProfile";
 import { auth } from "@/auth";
-
-const MAX_SKILLS = 50;
+import { studentProfilePatchSchema, formatZodError } from "@/lib/validation";
+import { isValidCloudinaryUrl } from "@/lib/cloudinary";
 
 // GET /api/profile/student — get the logged-in student's profile
 export async function GET() {
@@ -59,21 +59,18 @@ export async function PATCH(req: NextRequest) {
     }
 
     const userId = session.user.id;
-    const body = await req.json();
+    const raw = await req.json();
+    const parsed = studentProfilePatchSchema.safeParse(raw);
+    if (!parsed.success) {
+      return NextResponse.json({ message: formatZodError(parsed.error) }, { status: 400 });
+    }
+    const { phone, bio, skills, resumeUrl } = parsed.data;
 
-    // only allow these fields to be updated — never let the client set userId
-    const { phone, bio, skills, resumeUrl } = body;
-
-    if (skills !== undefined) {
-      if (!Array.isArray(skills) || skills.some((s) => typeof s !== "string")) {
-        return NextResponse.json({ message: "Skills must be an array of strings" }, { status: 400 });
-      }
-      if (skills.length > MAX_SKILLS) {
-        return NextResponse.json(
-          { message: `You can list at most ${MAX_SKILLS} skills` },
-          { status: 400 }
-        );
-      }
+    if (resumeUrl && resumeUrl.length > 0 && !isValidCloudinaryUrl(resumeUrl)) {
+      return NextResponse.json(
+        { message: "resumeUrl must be a valid Cloudinary URL from this project" },
+        { status: 400 }
+      );
     }
 
     const update: Record<string, unknown> = {};

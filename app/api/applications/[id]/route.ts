@@ -1,18 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
+import mongoose from "mongoose";
 import connectDb from "@/lib/db";
 import Application from "@/models/Application";
 import type { IJob } from "@/models/Job";
 import { auth } from "@/auth";
-
-const VALID_STATUSES = ["applied", "reviewed", "shortlisted", "rejected"] as const;
+import { applicationStatusSchema, formatZodError } from "@/lib/validation";
+import { rateLimit, getClientIp } from "@/lib/rateLimit";
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const ip = getClientIp(req);
+    const ipLimit = await rateLimit(`app-status-ip:${ip}`, { limit: 40, windowMs: 15 * 60 * 1000 });
+    if (!ipLimit.allowed) {
+      return NextResponse.json({ message: "Too many requests — please slow down" }, { status: 429 });
+    }
+
     await connectDb();
     const { id } = await params;
+    if (!mongoose.isValidObjectId(id)) {
+      return NextResponse.json({ message: "Invalid application id" }, { status: 400 });
+    }
 
     const session = await auth();
     if (!session?.user) {
@@ -43,15 +53,12 @@ export async function PATCH(
       );
     }
 
-    const body = await req.json();
-    const { status } = body;
-
-    if (!status || !VALID_STATUSES.includes(status)) {
-      return NextResponse.json(
-        { message: "Invalid status value" },
-        { status: 400 }
-      );
+    const raw = await req.json();
+    const parsed = applicationStatusSchema.safeParse(raw);
+    if (!parsed.success) {
+      return NextResponse.json({ message: formatZodError(parsed.error) }, { status: 400 });
     }
+    const { status } = parsed.data;
 
     application.status = status;
     await application.save();

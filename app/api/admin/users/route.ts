@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import connectDb from "@/lib/db";
 import User from "@/models/User";
 import { auth } from "@/auth";
-
-const DEFAULT_PAGE_SIZE = 20;
-const MAX_PAGE_SIZE = 100;
+import { PAGINATION } from "@/lib/constants";
 
 export async function GET(req: NextRequest) {
   try {
@@ -23,8 +21,8 @@ export async function GET(req: NextRequest) {
     const role = searchParams.get("role");
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
     const pageSize = Math.min(
-      MAX_PAGE_SIZE,
-      Math.max(1, parseInt(searchParams.get("pageSize") || String(DEFAULT_PAGE_SIZE), 10) || DEFAULT_PAGE_SIZE)
+      PAGINATION.ADMIN_USERS_MAX,
+      Math.max(1, parseInt(searchParams.get("pageSize") || String(PAGINATION.ADMIN_USERS_DEFAULT), 10) || PAGINATION.ADMIN_USERS_DEFAULT)
     );
 
     const query: Record<string, unknown> = {};
@@ -34,9 +32,11 @@ export async function GET(req: NextRequest) {
 
     const total = await User.countDocuments(query);
     const users = await User.find(query)
+      .select("-password")
       .sort({ createdAt: -1 })
       .skip((page - 1) * pageSize)
-      .limit(pageSize);
+      .limit(pageSize)
+      .lean();
 
     return NextResponse.json({
       users,

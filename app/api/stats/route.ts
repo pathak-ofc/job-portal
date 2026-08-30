@@ -15,7 +15,10 @@ export async function GET() {
       User.countDocuments({ role: "student" }),
     ]);
 
-    return NextResponse.json({ totalJobs, totalCompanies, totalStudents });
+    const res = NextResponse.json({ totalJobs, totalCompanies, totalStudents });
+    // cache at edge for 60s, stale-while-revalidate 300s — stats don't need to be real-time
+    res.headers.set("Cache-Control", "public, s-maxage=60, stale-while-revalidate=300");
+    return res;
   } catch (error) {
     console.error(error);
     return NextResponse.json(

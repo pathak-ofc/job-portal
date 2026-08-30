@@ -18,9 +18,9 @@ export async function GET(
       return NextResponse.json({ message: "Company not found" }, { status: 404 });
     }
 
-    const profile = await CompanyProfile.findOne({ userId: id }).select(
-      "companyName logoUrl website description verified createdAt"
-    );
+    const profile = await CompanyProfile.findOne({ userId: id })
+      .select("companyName logoUrl website description verified industry size foundedYear location createdAt")
+      .lean();
     if (!profile) {
       return NextResponse.json({ message: "Company not found" }, { status: 404 });
     }
@@ -28,7 +28,8 @@ export async function GET(
     const jobs = await Job.find({ companyId: id, status: "approved" })
       .select("title category location salaryRange jobType deadline createdAt")
       .sort({ createdAt: -1 })
-      .limit(100);
+      .limit(100)
+      .lean();
 
     return NextResponse.json({ company: profile, jobs });
   } catch (error) {

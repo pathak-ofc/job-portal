@@ -5,11 +5,12 @@ import StudentProfile from "@/models/StudentProfile";
 import CompanyProfile from "@/models/CompanyProfile";
 import bcrypt from "bcryptjs";
 import { rateLimit, getClientIp } from "@/lib/rateLimit";
+import { registerSchema, formatZodError } from "@/lib/validation";
 
 export async function POST(req: NextRequest) {
     try {
         const ip = getClientIp(req);
-        const { allowed } = rateLimit(`register:${ip}`, { limit: 5, windowMs: 15 * 60 * 1000 });
+        const { allowed } = await rateLimit(`register:${ip}`, { limit: 5, windowMs: 15 * 60 * 1000 });
         if (!allowed) {
             return NextResponse.json(
                 { message: "Too many registration attempts. Please try again later." },
@@ -18,47 +19,12 @@ export async function POST(req: NextRequest) {
         }
 
         await connectDb();
-        const body = await req.json();
-        const { name, email, password, role } = body;
-
-        // basic manual validation (your zod substitute)
-        if (!name || !email || !password || !role) {
-            return NextResponse.json(
-                { message: "Missing required fields" },
-                { status: 400 }
-            );
+        const raw = await req.json();
+        const parsed = registerSchema.safeParse(raw);
+        if (!parsed.success) {
+            return NextResponse.json({ message: formatZodError(parsed.error) }, { status: 400 });
         }
-
-        const trimmedName = String(name).trim();
-        if (trimmedName.length < 2 || trimmedName.length > 100) {
-            return NextResponse.json(
-                { message: "Name must be between 2 and 100 characters" },
-                { status: 400 }
-            );
-        }
-
-        const normalizedEmail = String(email).trim().toLowerCase();
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(normalizedEmail)) {
-            return NextResponse.json(
-                { message: "Invalid email format" },
-                { status: 400 }
-            );
-        }
-
-        if (!["student", "company"].includes(role)) {
-            return NextResponse.json(
-                { message: "Role must be 'student' or 'company'" },
-                { status: 400 }
-            );
-        }
-
-        if (typeof password !== "string" || password.length < 6 || password.length > 200) {
-            return NextResponse.json(
-                { message: "Password must be between 6 and 200 characters" },
-                { status: 400 }
-            );
-        }
+        const { name: trimmedName, email: normalizedEmail, password, role } = parsed.data;
 
         // check for existing user
         const existingUser = await User.findOne({ email: normalizedEmail });

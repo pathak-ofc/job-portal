@@ -70,10 +70,11 @@ export default function RegisterPage() {
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-medium text-text">
+          <label htmlFor="register-name" className="mb-1 block text-sm font-medium text-text">
             {role === "company" ? "Contact person name" : "Full name"}
           </label>
           <input
+            id="register-name"
             type="text"
             required
             value={form.name}
@@ -84,8 +85,11 @@ export default function RegisterPage() {
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-medium text-text">Email</label>
+          <label htmlFor="register-email" className="mb-1 block text-sm font-medium text-text">
+            Email
+          </label>
           <input
+            id="register-email"
             type="email"
             required
             value={form.email}
@@ -96,16 +100,23 @@ export default function RegisterPage() {
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-medium text-text">Password</label>
+          <label htmlFor="register-password" className="mb-1 block text-sm font-medium text-text">
+            Password
+          </label>
           <input
+            id="register-password"
             type="password"
             required
-            minLength={6}
+            minLength={8}
             value={form.password}
             onChange={(e) => setForm({ ...form, password: e.target.value })}
             className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-text outline-none transition-colors focus:border-primary"
-            placeholder="At least 6 characters"
+            placeholder="Min 8 chars, at least 1 letter + 1 number"
+            aria-describedby="password-hint"
           />
+          <p id="password-hint" className="mt-1 text-xs text-text-muted">
+            At least 8 characters, includes a letter and a number.
+          </p>
         </div>
 
         <motion.button

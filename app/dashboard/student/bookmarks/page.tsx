@@ -23,14 +23,21 @@ export default function StudentBookmarksPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/bookmarks")
+    const abort = new AbortController();
+    fetch("/api/bookmarks?pageSize=50", { signal: abort.signal })
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load bookmarks");
         return res.json();
       })
       .then((data) => setBookmarks(data.bookmarks || []))
-      .catch(() => toast.error("Failed to load your bookmarks"))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        if (err.name === "AbortError") return;
+        toast.error("Failed to load your bookmarks");
+      })
+      .finally(() => {
+        if (!abort.signal.aborted) setLoading(false);
+      });
+    return () => abort.abort();
   }, []);
 
   const validBookmarks = bookmarks.filter((b) => b.jobId);
